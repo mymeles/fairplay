@@ -99,6 +99,7 @@ const queueRowWithTrack = (overrides: Partial<QueueEntryWithTrack> = {}): QueueE
 const makeSessions = (record: PartySessionRecord = sessionRecord()): jest.Mocked<SessionService> =>
   ({
     loadJoinable: jest.fn().mockResolvedValue(record),
+    getSession: jest.fn().mockResolvedValue(record),
   }) as unknown as jest.Mocked<SessionService>;
 
 const makeTracks = (): jest.Mocked<TrackRepository> =>
@@ -318,6 +319,23 @@ describe('QueueService.listSession', () => {
 
     expect(result.map((entry) => entry.track.spotifyTrackId)).toEqual(['t1', 't2']);
     expect(result.map((entry) => entry.score)).toEqual([10, 5]);
+  });
+});
+
+describe('QueueService.listSessionForHost', () => {
+  it('verifies host session ownership and returns rows without the guest moderation gate', async () => {
+    const { service, entries, sessions, moderation } = makeService();
+    (entries.listBySessionWithTrack as jest.Mock).mockResolvedValueOnce([
+      queueRowWithTrack({ score: 7 }),
+    ]);
+
+    const result = await service.listSessionForHost(SESSION_ID, HOST_ID);
+
+    expect(sessions.getSession).toHaveBeenCalledWith(SESSION_ID, HOST_ID);
+    expect(entries.listBySessionWithTrack).toHaveBeenCalledWith(SESSION_ID);
+    expect(moderation.assertGuestCanReadQueue).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0]?.score).toBe(7);
   });
 });
 

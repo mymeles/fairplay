@@ -118,6 +118,15 @@ export class QueueService {
     return rows.map((row) => this.toDtoFromWithTrack(row));
   }
 
+  // Host-facing queue read. Verifies session ownership and bypasses guest
+  // moderation gates so the host dashboard can render queue state regardless
+  // of guest discipline. Used by GET /sessions/:id/host/queue.
+  async listSessionForHost(sessionId: string, hostUserId: string): Promise<QueueEntryDto[]> {
+    await this.sessions.getSession(sessionId, hostUserId);
+    const rows = await this.entries.listBySessionWithTrack(sessionId);
+    return rows.map((row) => this.toDtoFromWithTrack(row));
+  }
+
   async removeOwnEntry(entryId: string, guestId: string): Promise<QueueEntryDto> {
     const entry = await this.entries.findByIdWithTrack(entryId);
     if (!entry) {

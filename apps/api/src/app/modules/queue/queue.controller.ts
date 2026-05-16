@@ -14,6 +14,7 @@ import {
 import { Request } from 'express';
 import { DomainError } from '@fairplay/shared-utils';
 import { GuestAuthGuard } from '../guests/guest-auth.guard';
+import { HostAuthGuard } from '../spotify-auth/host-auth.guard';
 import { AddQueueEntryDto } from './dto/add-queue-entry.dto';
 import { QueueService } from './queue.service';
 
@@ -41,6 +42,18 @@ export class QueueController {
   ) {
     const guest = this.requireGuestForSession(req, sessionId);
     return this.queue.listSession(sessionId, guest.sub);
+  }
+
+  // Host dashboard queue read. Returns the full queue regardless of guest
+  // discipline so the host UI can render entries (including ones added by
+  // muted/banned guests) for moderation.
+  @Get('sessions/:sessionId/host/queue')
+  @UseGuards(HostAuthGuard)
+  async listForHost(
+    @Req() req: Request,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+  ) {
+    return this.queue.listSessionForHost(sessionId, req.hostClaims!.sub);
   }
 
   @Delete('queue/:entryId')

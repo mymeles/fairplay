@@ -9,8 +9,14 @@
     "noEmit": true,
     "incremental": true,
     "isolatedModules": true,
-    "plugins": [{ "name": "next" }]
+    "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@fairplay/shared-types": ["../../libs/shared-types/src/index.ts"],
+      "@fairplay/shared-utils": ["../../libs/shared-utils/src/index.ts"]
+    }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "tests/e2e"]
 }

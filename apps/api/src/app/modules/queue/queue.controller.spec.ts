@@ -8,12 +8,15 @@ import { RequestContextMiddleware } from '../../common/middleware/request-contex
 import { AppConfigService } from '../config/app-config.service';
 import { GuestAuthGuard } from '../guests/guest-auth.guard';
 import { GuestJwtService } from '../guests/guest-jwt.service';
+import { HostAuthGuard } from '../spotify-auth/host-auth.guard';
+import { HostJwtService } from '../spotify-auth/host-jwt.service';
 import { QueueController } from './queue.controller';
 import { QueueService } from './queue.service';
 
 const SESSION_ID = '11111111-1111-1111-1111-111111111111';
 const OTHER_SESSION_ID = '99999999-9999-9999-9999-999999999999';
 const GUEST_ID = '22222222-2222-2222-2222-222222222222';
+const HOST_USER_ID = '55555555-5555-5555-5555-555555555555';
 const ENTRY_ID = '33333333-3333-3333-3333-333333333333';
 const cfg = { hostJwtSecret: 's'.repeat(64) } as AppConfigService;
 
@@ -63,17 +66,21 @@ const addBody = {
 describe('QueueController', () => {
   let app: INestApplication;
   let guestJwt: GuestJwtService;
+  let hostJwt: HostJwtService;
   let queueService: {
     addTrack: jest.Mock;
     listSession: jest.Mock;
+    listSessionForHost: jest.Mock;
     removeOwnEntry: jest.Mock;
   };
 
   beforeAll(async () => {
     guestJwt = new GuestJwtService(cfg);
+    hostJwt = new HostJwtService(cfg);
     queueService = {
       addTrack: jest.fn(),
       listSession: jest.fn(),
+      listSessionForHost: jest.fn(),
       removeOwnEntry: jest.fn(),
     };
 
@@ -81,7 +88,9 @@ describe('QueueController', () => {
       controllers: [QueueController],
       providers: [
         GuestAuthGuard,
+        HostAuthGuard,
         { provide: GuestJwtService, useValue: guestJwt },
+        { provide: HostJwtService, useValue: hostJwt },
         { provide: QueueService, useValue: queueService },
       ],
     }).compile();
@@ -105,11 +114,14 @@ describe('QueueController', () => {
   beforeEach(() => {
     queueService.addTrack.mockReset();
     queueService.listSession.mockReset();
+    queueService.listSessionForHost.mockReset();
     queueService.removeOwnEntry.mockReset();
   });
 
   const authHeader = (sessionId = SESSION_ID): string =>
     `Bearer ${guestJwt.sign(GUEST_ID, sessionId)}`;
+  const hostAuthHeader = (userId = HOST_USER_ID): string =>
+    `Bearer ${hostJwt.sign(userId)}`;
 
   describe('POST /api/v1/sessions/:sessionId/queue', () => {
     it('401s without a guest token', async () => {
@@ -178,6 +190,31 @@ describe('QueueController', () => {
         .expect(200);
       expect(res.body.data).toEqual([queueEntry]);
       expect(queueService.listSession).toHaveBeenCalledWith(SESSION_ID, GUEST_ID);
+    });
+  });
+
+  describe('GET /api/v1/sessions/:sessionId/host/queue', () => {
+    it('401s without a host token', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/sessions/${SESSION_ID}/host/queue`)
+        .expect(401);
+    });
+
+    it('rejects a guest token on the host route', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/sessions/${SESSION_ID}/host/queue`)
+        .set('authorization', authHeader())
+        .expect(401);
+    });
+
+    it('returns the queue list for the host who owns the session', async () => {
+      queueService.listSessionForHost.mockResolvedValueOnce([queueEntry]);
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/sessions/${SESSION_ID}/host/queue`)
+        .set('authorization', hostAuthHeader())
+        .expect(200);
+      expect(res.body.data).toEqual([queueEntry]);
+      expect(queueService.listSessionForHost).toHaveBeenCalledWith(SESSION_ID, HOST_USER_ID);
     });
   });
 

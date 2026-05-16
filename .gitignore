@@ -34,3 +34,8 @@ out/
 # Test
 *.lcov
 .eslintcache
+
+# Incremental tsc + Playwright artefacts
+*.tsbuildinfo
+playwright-report/
+test-results/

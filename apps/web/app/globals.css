@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    @apply h-full bg-background text-ink;
+  }
+  body {
+    @apply font-sans antialiased;
+    background-image:
+      radial-gradient(at 5% -10%, rgba(168, 85, 247, 0.18) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(34, 211, 238, 0.14) 0px, transparent 55%),
+      radial-gradient(at 50% 110%, rgba(236, 72, 153, 0.12) 0px, transparent 55%);
+    background-attachment: fixed;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent-purple ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  .surface {
+    @apply rounded-2xl border border-border bg-surface/80 backdrop-blur;
+  }
+  .surface-raised {
+    @apply rounded-2xl border border-border bg-surface-raised;
+  }
+  .text-gradient {
+    @apply bg-gradient-party bg-clip-text text-transparent;
+  }
+  .ring-gradient {
+    background:
+      linear-gradient(#18181b, #18181b) padding-box,
+      linear-gradient(135deg, #a855f7, #ec4899, #22d3ee) border-box;
+    border: 1px solid transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

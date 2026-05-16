@@ -1,28 +1,61 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000/api/v1';
+import Link from 'next/link';
+import { ArrowRight, QrCode, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-export default function HomePage() {
+export default function LandingPage() {
   return (
-    <main style={{ padding: '4rem 2rem', maxWidth: 720, margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>FairPlay Party DJ</h1>
-      <p style={{ opacity: 0.8, marginBottom: '2rem' }}>
-        Milestone 1 placeholder. Frontend MVP lands in Milestone 17.
-      </p>
-      <section
-        style={{
-          padding: '1.5rem',
-          borderRadius: 12,
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.08)',
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>API status</h2>
-        <p style={{ margin: '0.25rem 0' }}>
-          Configured API base URL: <code>{API_BASE}</code>
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-between p-6 sm:p-10">
+      <header className="flex items-center justify-between">
+        <span className="font-mono text-sm uppercase tracking-[0.3em] text-ink-muted">
+          FairPlay
+        </span>
+        <span className="text-xs text-ink-subtle">v0.17 · MVP</span>
+      </header>
+
+      <section className="flex flex-1 flex-col items-start justify-center gap-6 py-12">
+        <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1 text-xs text-ink-muted">
+          <Sparkles className="h-3 w-3 text-accent-pink" aria-hidden />
+          The aux cord, but fair.
+        </span>
+        <h1 className="text-balance text-5xl font-black leading-[1.05] tracking-tight sm:text-7xl">
+          Vote the vibe.
+          <br />
+          <span className="text-gradient">Keep it fair.</span>
+        </h1>
+        <p className="max-w-xl text-pretty text-base text-ink-muted sm:text-lg">
+          Hosts plug into Spotify. Guests drop tracks, vote, and boost. The queue
+          stays democratic, the playlist stays alive.
         </p>
-        <p style={{ margin: '0.25rem 0' }}>
-          Try <code>{API_BASE}/health</code> while the API is running.
-        </p>
+        <div className="mt-2 flex w-full flex-col gap-3 sm:flex-row">
+          <Button asChild size="lg" className="w-full sm:w-auto">
+            <Link href="/host/login">
+              Host a party
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="secondary" className="w-full sm:w-auto">
+            <Link href="/join">
+              <QrCode className="h-4 w-4" aria-hidden />
+              Join a party
+            </Link>
+          </Button>
+        </div>
       </section>
+
+      <footer className="mt-10 grid grid-cols-1 gap-3 text-sm text-ink-muted sm:grid-cols-3">
+        <div className="rounded-2xl border border-border bg-surface/60 p-4">
+          <div className="text-xs uppercase tracking-wide text-ink-subtle">No phone-stealing</div>
+          <div className="mt-1 text-ink">Everyone queues from their seat.</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface/60 p-4">
+          <div className="text-xs uppercase tracking-wide text-ink-subtle">Locked windows</div>
+          <div className="mt-1 text-ink">Top tracks lock in. Challenge to unlock.</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface/60 p-4">
+          <div className="text-xs uppercase tracking-wide text-ink-subtle">Host in control</div>
+          <div className="mt-1 text-ink">Pin, veto, ban — the vibe is yours.</div>
+        </div>
+      </footer>
     </main>
   );
 }
