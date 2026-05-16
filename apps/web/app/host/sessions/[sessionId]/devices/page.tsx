@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ApiError } from '@/lib/api/client';
 import {
   hostPause,
   hostResume,
@@ -89,6 +90,9 @@ export default function HostDevicesPage({ params }: { params: { sessionId: strin
                 <Loader2 className="inline h-4 w-4 animate-spin" /> Loading devices…
               </p>
             ) : null}
+            {devices.isError ? (
+              <DeviceError error={devices.error} onRetry={() => devices.refetch()} />
+            ) : null}
             {devices.data?.devices?.length ? (
               devices.data.devices.map((d) => (
                 <DeviceRow
@@ -99,7 +103,7 @@ export default function HostDevicesPage({ params }: { params: { sessionId: strin
                   busy={select.isPending}
                 />
               ))
-            ) : !devices.isLoading ? (
+            ) : !devices.isLoading && !devices.isError ? (
               <p className="text-sm text-ink-muted">
                 No devices reported by Spotify. Open Spotify on a phone, speaker, or desktop
                 app and refresh.
@@ -185,3 +189,40 @@ const DeviceRow = ({
     </Button>
   </div>
 );
+
+const DeviceError = ({ error, onRetry }: { error: Error | null; onRetry: () => void }) => {
+  const code = error instanceof ApiError ? error.code : 'UNKNOWN';
+  const retryAfterSec =
+    error instanceof ApiError && typeof error.details?.retryAfterSec === 'number'
+      ? error.details.retryAfterSec
+      : null;
+  const message = error?.message ?? 'Could not load Spotify devices.';
+  const retryMessage =
+    retryAfterSec !== null ? ` Try again in ${formatRetryAfter(retryAfterSec)}.` : '';
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-danger/40 bg-danger/10 p-3">
+      <div>
+        <p className="text-sm font-semibold text-danger">Could not load Spotify devices</p>
+        <p className="text-sm text-ink-muted">
+          {code} — {message}
+          {retryMessage}
+        </p>
+      </div>
+      <div>
+        <Button size="sm" variant="secondary" onClick={onRetry}>
+          <RefreshCw className="h-3 w-3" /> Retry
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+const formatRetryAfter = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+};
