@@ -29,7 +29,10 @@ export interface QueueUpdatedPayload {
     | 'entry_vetoed'
     | 'score_changed'
     | 'lock_changed'
-    | 'entry_queued_to_spotify';
+    | 'entry_queued_to_spotify'
+    | 'boost_applied'
+    | 'host_pinned'
+    | 'host_unpinned';
   entryId?: QueueEntryId;
   status?: QueueEntryStatus;
 }
@@ -53,10 +56,10 @@ export interface TrackLockPayload {
 
 export interface TokenUpdatedPayload {
   guestId: GuestId;
-  tokenType: 'BOOST' | 'CHALLENGE';
+  tokenType: 'BOOST' | 'CHALLENGE' | 'WALLET';
   boostTokens: number;
   challengeTokens: number;
-  reason: 'challenge_lock';
+  reason: 'challenge_lock' | 'boost_applied' | 'host_grant';
 }
 
 // M12 — runner publishes this when an internal queue entry is dispatched to

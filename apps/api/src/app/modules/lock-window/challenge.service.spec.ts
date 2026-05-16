@@ -6,6 +6,7 @@ import type { RedisQueueRepository } from '../queue/redis-queue.repository';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import type { ScoreRebuildService } from '../scoring/score-rebuild.service';
 import type { SessionService } from '../sessions/session.service';
+import type { TokenLedgerService } from '../tokens/token-ledger.service';
 import { ChallengeService } from './challenge.service';
 
 const SESSION_ID = '11111111-1111-1111-1111-111111111111';
@@ -85,6 +86,20 @@ const makeScoreRebuild = (): jest.Mocked<ScoreRebuildService> =>
       ),
   }) as unknown as jest.Mocked<ScoreRebuildService>;
 
+const makeLedger = (): jest.Mocked<TokenLedgerService> =>
+  ({
+    record: jest.fn().mockResolvedValue({
+      id: '55555555-5555-5555-5555-555555555555',
+      sessionId: SESSION_ID,
+      guestId: GUEST_ID,
+      entryId: ENTRY_ID,
+      tokenType: 'CHALLENGE',
+      amount: -1,
+      reason: 'CHALLENGE_LOCK',
+      createdAt: NOW,
+    }),
+  }) as unknown as jest.Mocked<TokenLedgerService>;
+
 const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
   ({
     publishTrackUnlocked: jest.fn(),
@@ -99,6 +114,7 @@ const makeService = (record = entry()) => {
   const wallets = makeWallets();
   const redisQueue = makeRedisQueue();
   const scoreRebuild = makeScoreRebuild();
+  const ledger = makeLedger();
   const realtime = makeRealtime();
   const service = new ChallengeService(
     prisma,
@@ -107,14 +123,15 @@ const makeService = (record = entry()) => {
     wallets,
     redisQueue,
     scoreRebuild,
+    ledger,
     realtime,
   );
-  return { service, prisma, sessions, entries, wallets, redisQueue, scoreRebuild, realtime };
+  return { service, prisma, sessions, entries, wallets, redisQueue, scoreRebuild, ledger, realtime };
 };
 
 describe('ChallengeService.challengeLock', () => {
   it('spends one challenge token, unlocks the entry, and recalculates rank', async () => {
-    const { service, entries, wallets, redisQueue, scoreRebuild, realtime } = makeService();
+    const { service, entries, wallets, redisQueue, scoreRebuild, ledger, realtime } = makeService();
 
     const result = await service.challengeLock(ENTRY_ID, GUEST_ID, SESSION_ID);
 
@@ -124,6 +141,17 @@ describe('ChallengeService.challengeLock', () => {
       expect.anything(),
     );
     expect(entries.unlockEntry).toHaveBeenCalledWith(ENTRY_ID, expect.anything());
+    expect(ledger.record).toHaveBeenCalledWith(
+      {
+        sessionId: SESSION_ID,
+        guestId: GUEST_ID,
+        entryId: ENTRY_ID,
+        tokenType: 'CHALLENGE',
+        amount: -1,
+        reason: 'CHALLENGE_LOCK',
+      },
+      expect.anything(),
+    );
     expect(redisQueue.removeLocked).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
     expect(scoreRebuild.recalculateEntry).toHaveBeenCalledWith(ENTRY_ID);
     expect(realtime.publishTrackUnlocked).toHaveBeenCalledWith(SESSION_ID, {
@@ -148,13 +176,14 @@ describe('ChallengeService.challengeLock', () => {
   });
 
   it('fails without a challenge token and leaves the lock intact', async () => {
-    const { service, entries, wallets, redisQueue, scoreRebuild } = makeService();
+    const { service, entries, wallets, redisQueue, scoreRebuild, ledger } = makeService();
     (wallets.spendChallengeToken as jest.Mock).mockResolvedValueOnce(null);
 
     await expect(service.challengeLock(ENTRY_ID, GUEST_ID, SESSION_ID)).rejects.toMatchObject({
       code: 'CONFLICT',
     });
 
+    expect(ledger.record).not.toHaveBeenCalled();
     expect(entries.unlockEntry).not.toHaveBeenCalled();
     expect(redisQueue.removeLocked).not.toHaveBeenCalled();
     expect(scoreRebuild.recalculateEntry).not.toHaveBeenCalled();

@@ -77,6 +77,7 @@ model PartySession {
 
   guests       SessionGuest[]
   guestWallets GuestWallet[]
+  tokenLedger  TokenLedger[]
 
   @@index([hostUserId, status])
   @@index([status, expiresAt])
@@ -95,6 +96,7 @@ model SessionGuest {
 
   session PartySession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   wallet  GuestWallet?
+  tokenLedger TokenLedger[]
 
   @@index([sessionId])
   @@index([sessionId, deviceHash])
@@ -116,6 +118,26 @@ model GuestWallet {
   @@unique([sessionId, guestId])
   @@index([guestId])
   @@map("guest_wallets")
+}
+
+model TokenLedger {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  guestId   String   @map("guest_id") @db.Uuid
+  entryId   String?  @map("entry_id") @db.Uuid
+  tokenType String   @map("token_type")
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session PartySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guest   SessionGuest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  entry   QueueEntry?  @relation(fields: [entryId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, guestId, entryId, tokenType, reason], map: "ux_token_ledger_entry_spend")
+  @@index([guestId, createdAt(sort: Desc)], map: "idx_token_ledger_guest")
+  @@index([sessionId, createdAt(sort: Desc)], map: "idx_token_ledger_session")
+  @@map("token_ledger")
 }
 
 model Track {
@@ -173,6 +195,7 @@ model QueueEntry {
 
   track Track @relation(fields: [trackId], references: [id])
   votes Vote[]
+  tokenLedger TokenLedger[]
 
   @@index([sessionId, status])
   @@index([sessionId, score(sort: Desc)])

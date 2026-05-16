@@ -139,6 +139,17 @@ export class SessionRepository {
     return found !== null;
   }
 
+  async updateSettings(
+    sessionId: string,
+    settings: SessionSettings,
+  ): Promise<PartySessionRecord> {
+    const row = await this.prisma.partySession.update({
+      where: { id: sessionId },
+      data: { settingsJson: settings as unknown as Prisma.InputJsonValue },
+    });
+    return toRecord(row);
+  }
+
   async markEnded(sessionId: string, endedAt: Date = new Date()): Promise<PartySessionRecord> {
     const row = await this.prisma.partySession.update({
       where: { id: sessionId },

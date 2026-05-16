@@ -8,6 +8,7 @@ import { RedisQueueRepository } from '../queue/redis-queue.repository';
 import { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { ScoreRebuildService } from '../scoring/score-rebuild.service';
 import { SessionService } from '../sessions/session.service';
+import { TokenLedgerService } from '../tokens/token-ledger.service';
 import type { QueueEntryState } from './lock-window.service';
 
 export interface ChallengeLockResult {
@@ -26,6 +27,7 @@ export class ChallengeService {
     private readonly wallets: GuestWalletRepository,
     private readonly redisQueue: RedisQueueRepository,
     private readonly scoreRebuild: ScoreRebuildService,
+    private readonly ledger: TokenLedgerService,
     @Optional()
     private readonly realtime?: RealtimeEventPublisher,
   ) {}
@@ -55,6 +57,17 @@ export class ChallengeService {
         });
       }
 
+      await this.ledger.record(
+        {
+          sessionId: current.sessionId,
+          guestId,
+          entryId: current.id,
+          tokenType: 'CHALLENGE',
+          amount: -1,
+          reason: 'CHALLENGE_LOCK',
+        },
+        tx,
+      );
       await this.entries.unlockEntry(entryId, tx);
       return updatedWallet;
     });

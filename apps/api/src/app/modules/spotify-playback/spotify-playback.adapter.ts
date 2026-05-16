@@ -104,6 +104,57 @@ export class SpotifyPlaybackAdapter {
     };
   }
 
+  // M14 — host controls. Spotify documents:
+  //   POST /v1/me/player/next  → skip to next track
+  //   PUT  /v1/me/player/pause → pause playback
+  //   PUT  /v1/me/player/play  → resume playback
+  // All three accept an optional `device_id` query param and return 204 on
+  // success / 404 when there's no active device.
+  async skipToNext(accessToken: string, deviceId: string | null = null): Promise<void> {
+    return this.controlCall('POST', '/me/player/next', accessToken, deviceId, 'skipToNext');
+  }
+
+  async pause(accessToken: string, deviceId: string | null = null): Promise<void> {
+    return this.controlCall('PUT', '/me/player/pause', accessToken, deviceId, 'pause');
+  }
+
+  async resume(accessToken: string, deviceId: string | null = null): Promise<void> {
+    return this.controlCall('PUT', '/me/player/play', accessToken, deviceId, 'resume');
+  }
+
+  private async controlCall(
+    method: 'POST' | 'PUT',
+    path: string,
+    accessToken: string,
+    deviceId: string | null,
+    op: string,
+  ): Promise<void> {
+    const url = this.urlWithDevice(`${SPOTIFY_API_BASE}${path}`, deviceId);
+    const res = await this.fetcher(url, {
+      method,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (res.status === 204) return;
+    if (res.status === 404) {
+      // Spotify uses 404 for "no active device" on these endpoints. Surface
+      // the same typed error the runner uses so callers can branch on it.
+      const body = await safeText(res);
+      throw new DomainError(
+        'SPOTIFY_NO_ACTIVE_DEVICE',
+        'Spotify has no active playback device.',
+        { op, body },
+      );
+    }
+    await this.assertOk(res, op);
+  }
+
+  private urlWithDevice(base: string, deviceId: string | null): string {
+    if (!deviceId) return base;
+    const url = new URL(base);
+    url.searchParams.set('device_id', deviceId);
+    return url.toString();
+  }
+
   async transferPlayback(accessToken: string, deviceId: string, play: boolean): Promise<void> {
     const res = await this.fetcher(`${SPOTIFY_API_BASE}/me/player`, {
       method: 'PUT',

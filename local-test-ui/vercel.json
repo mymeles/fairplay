@@ -1,0 +1,9 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/host.html" },
+    { "source": "/host", "destination": "/host.html" },
+    { "source": "/guest", "destination": "/guest.html" },
+    { "source": "/auth/complete", "destination": "/host.html" }
+  ]
+}

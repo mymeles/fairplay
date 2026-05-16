@@ -24,4 +24,24 @@ export class HostDeviceController {
   async selectDevice(@Req() req: Request, @Body() body: SelectDeviceDto) {
     return this.devices.selectDevice(req.hostClaims!.sub, body.deviceId);
   }
+
+  // M14 — host playback controls. Thin pass-throughs to the adapter; token
+  // refresh + 401 retry happens inside SpotifyDeviceService.
+  @Post('skip')
+  @HttpCode(HttpStatus.OK)
+  async skip(@Req() req: Request) {
+    return this.devices.skip(req.hostClaims!.sub);
+  }
+
+  @Post('pause')
+  @HttpCode(HttpStatus.OK)
+  async pause(@Req() req: Request) {
+    return this.devices.pause(req.hostClaims!.sub);
+  }
+
+  @Post('resume')
+  @HttpCode(HttpStatus.OK)
+  async resume(@Req() req: Request) {
+    return this.devices.resume(req.hostClaims!.sub);
+  }
 }

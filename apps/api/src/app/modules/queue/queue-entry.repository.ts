@@ -275,6 +275,17 @@ export class QueueEntryRepository {
     return toRecord(row);
   }
 
+  async incrementBoostCredits(
+    entryId: string,
+    tx: PrismaTxn = this.prisma,
+  ): Promise<QueueEntryRecord> {
+    const row = await tx.queueEntry.update({
+      where: { id: entryId },
+      data: { boostCredits: { increment: 1 } },
+    });
+    return toRecord(row);
+  }
+
   async lockEntry(
     entryId: string,
     lockedUntil: Date,
@@ -306,6 +317,18 @@ export class QueueEntryRepository {
     return tx.queueEntry.count({
       where: { sessionId, status: { in: ['QUEUED_TO_SPOTIFY', 'PLAYING'] } },
     });
+  }
+
+  async setHostPinned(
+    entryId: string,
+    pinned: boolean,
+    tx: PrismaTxn = this.prisma,
+  ): Promise<QueueEntryRecord> {
+    const row = await tx.queueEntry.update({
+      where: { id: entryId },
+      data: { hostPinned: pinned },
+    });
+    return toRecord(row);
   }
 
   async findPlayingBySession(

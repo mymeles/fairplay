@@ -67,6 +67,36 @@ export class SpotifyDeviceService {
     return { deviceId, transferred: true };
   }
 
+  async skip(userId: string): Promise<{ ok: true }> {
+    const deviceId = await this.deviceIdFor(userId);
+    await this.callWithAuthRetry(userId, (token) =>
+      this.adapter.skipToNext(token, deviceId),
+    );
+    this.logger.log({ userId, deviceId }, 'Host invoked Spotify skip.');
+    return { ok: true };
+  }
+
+  async pause(userId: string): Promise<{ ok: true }> {
+    const deviceId = await this.deviceIdFor(userId);
+    await this.callWithAuthRetry(userId, (token) => this.adapter.pause(token, deviceId));
+    this.logger.log({ userId, deviceId }, 'Host invoked Spotify pause.');
+    return { ok: true };
+  }
+
+  async resume(userId: string): Promise<{ ok: true }> {
+    const deviceId = await this.deviceIdFor(userId);
+    await this.callWithAuthRetry(userId, (token) => this.adapter.resume(token, deviceId));
+    this.logger.log({ userId, deviceId }, 'Host invoked Spotify resume.');
+    return { ok: true };
+  }
+
+  // Resolve the host's preferred device. Falls back to whatever Spotify
+  // considers active when we haven't recorded a selection yet.
+  private async deviceIdFor(userId: string): Promise<string | null> {
+    const user = await this.users.findById(userId);
+    return user?.selectedDeviceId ?? null;
+  }
+
   // Single-shot retry on SPOTIFY_AUTH_FAILED. Spotify can revoke an access
   // token mid-window (admin reset, password change, scope change). One forced
   // refresh covers that edge case without masking real auth failures.
