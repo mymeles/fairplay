@@ -3,13 +3,13 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import { Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { ApiError } from '@/lib/api/client';
 import { getSession, patchSessionSettings } from '@/lib/api/endpoints';
 import { qk } from '@/lib/query/keys';
 import { toast } from '@/components/ui/toaster';
@@ -24,9 +24,8 @@ interface FormValues {
   proximityRequired: boolean;
 }
 
-export default function HostSettingsPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function HostSettingsPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const qc = useQueryClient();
 
   const session = useQuery({
@@ -71,8 +70,30 @@ export default function HostSettingsPage() {
       toast({ title: 'Could not save', description: err.message, tone: 'danger' }),
   });
 
-  if (session.isLoading || !session.data) {
-    return <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />;
+  if (session.isLoading) {
+    return (
+      <p className="text-ink-muted">
+        <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> Loading settings…
+      </p>
+    );
+  }
+  if (session.isError || !session.data) {
+    const err = session.error;
+    const code = err instanceof ApiError ? err.code : 'UNKNOWN';
+    const message = err instanceof Error ? err.message : 'Could not load session.';
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Could not load settings</CardTitle>
+          <CardDescription>
+            {code} — {message}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={() => session.refetch()}>Retry</Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

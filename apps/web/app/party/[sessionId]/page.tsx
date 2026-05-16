@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, ListMusic, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,9 +12,8 @@ import { NowPlayingCard } from '@/components/domain/now-playing-card';
 import { usePartySocket } from '@/lib/realtime/PartySocketProvider';
 import { formatDuration } from '@/lib/utils';
 
-export default function PartyHomePage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function PartyHomePage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const { nowPlaying } = usePartySocket();
 
   const queue = useQuery({

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import {
   CheckCircle2,
   Loader2,
@@ -28,9 +27,8 @@ import { toast } from '@/components/ui/toaster';
 import { RunnerStatusBadge } from '@/components/domain/runner-status-badge';
 import { usePartySocket } from '@/lib/realtime/PartySocketProvider';
 
-export default function HostDevicesPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function HostDevicesPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const qc = useQueryClient();
   const { runnerStatus } = usePartySocket();
 

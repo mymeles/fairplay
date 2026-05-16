@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Search } from 'lucide-react';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,9 +19,8 @@ const useDebounced = <T,>(value: T, delay = 350): T => {
   return v;
 };
 
-export default function PartySearchPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function PartySearchPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const debounced = useDebounced(q, 300);

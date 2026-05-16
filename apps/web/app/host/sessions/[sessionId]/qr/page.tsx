@@ -1,20 +1,20 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Maximize2, Users } from 'lucide-react';
+import { Copy, Loader2, Maximize2, Users } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ApiError } from '@/lib/api/client';
 import { getSession } from '@/lib/api/endpoints';
 import { qk } from '@/lib/query/keys';
 import { usePartySocket } from '@/lib/realtime/PartySocketProvider';
 import { toast } from '@/components/ui/toaster';
 
-export default function HostQrPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function HostQrPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const { subscribe } = usePartySocket();
   const [guestCount, setGuestCount] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
@@ -41,8 +41,33 @@ export default function HostQrPage() {
     toast({ title: 'Copied join link', tone: 'success' });
   };
 
-  if (sessionQuery.isLoading || !sessionQuery.data) {
-    return <p className="text-ink-muted">Loading session…</p>;
+  if (sessionQuery.isLoading) {
+    return (
+      <p className="text-ink-muted">
+        <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> Loading session…
+      </p>
+    );
+  }
+  if (sessionQuery.isError || !sessionQuery.data) {
+    const err = sessionQuery.error;
+    const code = err instanceof ApiError ? err.code : 'UNKNOWN';
+    const message = err instanceof Error ? err.message : 'Could not load session.';
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Could not load this session</CardTitle>
+          <CardDescription>
+            {code} — {message}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-2">
+          <Button onClick={() => sessionQuery.refetch()}>Retry</Button>
+          <Button asChild variant="secondary">
+            <Link href="/host/sessions/new">Create a new session</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   const session = sessionQuery.data;

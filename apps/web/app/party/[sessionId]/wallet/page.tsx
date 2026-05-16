@@ -1,6 +1,5 @@
 'use client';
 
-import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Rocket, Sparkles, Wallet2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +7,8 @@ import { getGuestWallet } from '@/lib/api/endpoints';
 import { qk } from '@/lib/query/keys';
 import { usePartySocket } from '@/lib/realtime/PartySocketProvider';
 
-export default function WalletPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function WalletPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const { lastTokenUpdate } = usePartySocket();
 
   const wallet = useQuery({

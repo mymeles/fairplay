@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import { Ban, Shield, ShieldOff, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,9 +17,8 @@ import {
 import { toast } from '@/components/ui/toaster';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-export default function HostModerationPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function HostModerationPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
 
   const [trackId, setTrackId] = useState('');
   const [trackTitle, setTrackTitle] = useState('');

@@ -14,7 +14,7 @@ import { guestTokenStore, hostTokenStore } from '@/lib/auth/token-store';
 type FetchInit = RequestInit & { method?: string };
 interface MockResponse {
   status?: number;
-  body: unknown;
+  body?: unknown;
   text?: string;
 }
 

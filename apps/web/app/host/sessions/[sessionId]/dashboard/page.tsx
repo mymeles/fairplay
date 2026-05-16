@@ -2,7 +2,6 @@
 
 import { AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -18,9 +17,8 @@ import { RunnerStatusBadge } from '@/components/domain/runner-status-badge';
 import { usePartySocket } from '@/lib/realtime/PartySocketProvider';
 import { toast } from '@/components/ui/toaster';
 
-export default function HostDashboardPage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function HostDashboardPage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const qc = useQueryClient();
   const { nowPlaying, runnerStatus } = usePartySocket();
 
@@ -82,6 +80,10 @@ export default function HostDashboardPage() {
         <CardContent>
           {queue.isLoading ? (
             <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />
+          ) : queue.isError ? (
+            <p className="text-sm text-danger">
+              Queue read failed: {queue.error instanceof Error ? queue.error.message : 'unknown error'}.
+            </p>
           ) : pending.length === 0 ? (
             <p className="text-sm text-ink-muted">
               No active queue items yet. Guest-added tracks will appear here in

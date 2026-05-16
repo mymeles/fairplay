@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { Loader2, MusicIcon } from 'lucide-react';
@@ -23,9 +22,8 @@ import { toast } from '@/components/ui/toaster';
 import { usePartySocket } from '@/lib/realtime/PartySocketProvider';
 import type { QueueEntryDto, VoteUpdatedPayload } from '@fairplay/shared-types';
 
-export default function PartyQueuePage() {
-  const params = useParams<{ sessionId: string }>();
-  const sessionId = params.sessionId;
+export default function PartyQueuePage({ params }: { params: { sessionId: string } }) {
+  const { sessionId } = params;
   const { meta } = useGuestAuth(sessionId);
   const qc = useQueryClient();
   const { subscribe } = usePartySocket();
