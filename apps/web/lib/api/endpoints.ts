@@ -73,8 +73,14 @@ export interface CreateSessionBody {
   venueWifiHash?: string;
 }
 
+export interface CreateSessionResult {
+  session: SessionSummary;
+  joinCode: string;
+  qrToken: string;
+}
+
 export const createSession = (body: CreateSessionBody) =>
-  apiFetch<SessionSummary>({
+  apiFetch<CreateSessionResult>({
     path: '/sessions',
     method: 'POST',
     body,

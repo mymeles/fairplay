@@ -12,7 +12,6 @@ import { Switch } from '@/components/ui/switch';
 import { createSession } from '@/lib/api/endpoints';
 import { useHostAuth } from '@/lib/auth/hooks';
 import { toast } from '@/components/ui/toaster';
-import type { SessionSummary } from '@fairplay/shared-types';
 
 interface FormValues {
   lockSize: number;
@@ -61,7 +60,7 @@ export default function NewSessionPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      const session: SessionSummary = await createSession({
+      const result = await createSession({
         settings: {
           lockSize: Number(values.lockSize),
           lockDurationSeconds: Number(values.lockDurationSeconds),
@@ -76,10 +75,10 @@ export default function NewSessionPage() {
       });
       toast({
         title: 'Party created',
-        description: `Join code ${session.joinCode}`,
+        description: `Join code ${result.joinCode}`,
         tone: 'success',
       });
-      router.push(`/host/sessions/${session.id}/qr`);
+      router.push(`/host/sessions/${result.session.id}/qr`);
     } catch (err) {
       toast({
         title: 'Could not create session',
