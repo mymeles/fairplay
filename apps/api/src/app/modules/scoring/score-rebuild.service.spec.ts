@@ -161,7 +161,8 @@ describe('ScoreRebuildService.recalculateSession + rebuildRedisProjection', () =
   });
 
   it('skips setScore when the recomputed score is unchanged', async () => {
-    const e = entry({ id: 'unchanged', upvotes: 0, score: 0 });
+    const now = new Date();
+    const e = entry({ id: 'unchanged', upvotes: 0, score: 0, createdAt: now, updatedAt: now });
     const { service, entryRepo } = makeService([e]);
     await service.recalculateSession(SESSION_ID);
     expect(entryRepo.setScore).not.toHaveBeenCalled();

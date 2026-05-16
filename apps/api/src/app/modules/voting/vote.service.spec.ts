@@ -1,12 +1,12 @@
 import { DEFAULT_SESSION_SETTINGS } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
 import type { PrismaService } from '../database/prisma.service';
+import type { ModerationService } from '../moderation/moderation.service';
 import type { QueueEntryRecord, QueueEntryRepository } from '../queue/queue-entry.repository';
 import type { RedisQueueRepository } from '../queue/redis-queue.repository';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import type { ScoringService } from '../scoring/scoring.service';
 import type { SessionService } from '../sessions/session.service';
-import type { VoteRateLimiter } from './vote-rate-limiter';
 import type { VoteRepository, VoteRecord } from './vote.repository';
 import { VoteService, computeDeltas } from './vote.service';
 
@@ -91,10 +91,10 @@ const makeRedisQueue = (): jest.Mocked<RedisQueueRepository> =>
     listPendingIds: jest.fn().mockResolvedValue([]),
   }) as unknown as jest.Mocked<RedisQueueRepository>;
 
-const makeLimiter = (): jest.Mocked<VoteRateLimiter> =>
+const makeModeration = (): jest.Mocked<ModerationService> =>
   ({
-    assertAllowed: jest.fn().mockResolvedValue(undefined),
-  }) as unknown as jest.Mocked<VoteRateLimiter>;
+    assertGuestCanMutateQueue: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<ModerationService>;
 
 // The scoring formula is fully exercised in scoring.service.spec.ts. Here we
 // use a fake that returns `upvotes - downvotes` so vote-flow assertions can
@@ -116,7 +116,7 @@ const makeService = (record: QueueEntryRecord = queueRow()) => {
   const entries = makeEntries(record);
   const votes = makeVotes();
   const redisQueue = makeRedisQueue();
-  const limiter = makeLimiter();
+  const moderation = makeModeration();
   const scoring = makeScoring();
   const realtime = makeRealtime();
   const service = new VoteService(
@@ -125,11 +125,11 @@ const makeService = (record: QueueEntryRecord = queueRow()) => {
     entries,
     votes,
     redisQueue,
-    limiter,
+    moderation,
     scoring,
     realtime,
   );
-  return { service, prisma, sessions, entries, votes, redisQueue, limiter, scoring, realtime };
+  return { service, prisma, sessions, entries, votes, redisQueue, moderation, scoring, realtime };
 };
 
 describe('computeDeltas', () => {
@@ -155,11 +155,15 @@ describe('computeDeltas', () => {
 
 describe('VoteService.castVote', () => {
   it('records a new upvote and updates the ZSET for a PENDING entry', async () => {
-    const { service, entries, votes, redisQueue, limiter, realtime } = makeService();
+    const { service, entries, votes, redisQueue, moderation, realtime } = makeService();
 
     const result = await service.castVote(ENTRY_ID, GUEST_ID, SESSION_ID, 1);
 
-    expect(limiter.assertAllowed).toHaveBeenCalledWith(GUEST_ID);
+    expect(moderation.assertGuestCanMutateQueue).toHaveBeenCalledWith(
+      SESSION_ID,
+      GUEST_ID,
+      'vote',
+    );
     expect(entries.applyVoteDelta).toHaveBeenCalledWith(
       ENTRY_ID,
       1,
@@ -267,8 +271,8 @@ describe('VoteService.castVote', () => {
   });
 
   it('rejects when the rate limiter trips', async () => {
-    const { service, limiter, entries } = makeService();
-    (limiter.assertAllowed as jest.Mock).mockRejectedValueOnce(
+    const { service, moderation, entries } = makeService();
+    (moderation.assertGuestCanMutateQueue as jest.Mock).mockRejectedValueOnce(
       new DomainError('RATE_LIMITED', 'slow down', { retryAfterSec: 5 }),
     );
     await expect(service.castVote(ENTRY_ID, GUEST_ID, SESSION_ID, 1)).rejects.toMatchObject({
@@ -325,8 +329,8 @@ describe('VoteService.removeVote', () => {
   });
 
   it('rate-limits removal too', async () => {
-    const { service, limiter, entries } = makeService();
-    (limiter.assertAllowed as jest.Mock).mockRejectedValueOnce(
+    const { service, moderation, entries } = makeService();
+    (moderation.assertGuestCanMutateQueue as jest.Mock).mockRejectedValueOnce(
       new DomainError('RATE_LIMITED', 'slow down'),
     );
     await expect(service.removeVote(ENTRY_ID, GUEST_ID, SESSION_ID)).rejects.toMatchObject({

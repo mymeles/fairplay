@@ -39,8 +39,8 @@ export class QueueController {
     @Req() req: Request,
     @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
   ) {
-    this.requireGuestForSession(req, sessionId);
-    return this.queue.listSession(sessionId);
+    const guest = this.requireGuestForSession(req, sessionId);
+    return this.queue.listSession(sessionId, guest.sub);
   }
 
   @Delete('queue/:entryId')

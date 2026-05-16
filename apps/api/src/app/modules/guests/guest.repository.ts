@@ -62,6 +62,14 @@ export class GuestRepository {
     return row ? toRecord(row) : null;
   }
 
+  async findLatestByDevice(sessionId: string, deviceHash: string): Promise<SessionGuestRecord | null> {
+    const row = await this.prisma.sessionGuest.findFirst({
+      where: { sessionId, deviceHash },
+      orderBy: { joinedAt: 'desc' },
+    });
+    return row ? toRecord(row) : null;
+  }
+
   async findById(guestId: string): Promise<SessionGuestRecord | null> {
     const row = await this.prisma.sessionGuest.findUnique({ where: { id: guestId } });
     return row ? toRecord(row) : null;

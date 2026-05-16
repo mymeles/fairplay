@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { DEFAULT_SESSION_SETTINGS } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
 import type { AppConfigService } from '../config/app-config.service';
+import type { ModerationService } from '../moderation/moderation.service';
 import { JoinTrustScorer } from '../proximity/join-trust-scorer';
 import { ProximityService } from '../proximity/proximity.service';
 import type { PartySessionRecord } from '../sessions/session.repository';
@@ -58,6 +59,7 @@ const makeGuestRepo = (
   ({
     create: jest.fn().mockResolvedValue(guestRecord()),
     findActiveByDevice: jest.fn().mockResolvedValue(existing),
+    findLatestByDevice: jest.fn().mockResolvedValue(existing),
     findById: jest.fn(),
     touchLastSeen: jest.fn().mockResolvedValue(undefined),
   }) as unknown as jest.Mocked<GuestRepository>;
@@ -76,16 +78,22 @@ const guestJwt = new GuestJwtService({ hostJwtSecret: 's'.repeat(64) } as AppCon
 
 const makeProximity = (): ProximityService => new ProximityService(new JoinTrustScorer());
 
+const makeModeration = (): jest.Mocked<ModerationService> =>
+  ({
+    assertJoinAllowed: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<ModerationService>;
+
 const buildService = (
   session: PartySessionRecord = sessionRecord(),
   qr: QrTokenService = new QrTokenService(),
   guests: jest.Mocked<GuestRepository> = makeGuestRepo(),
   wallets: jest.Mocked<GuestWalletRepository> = makeWalletRepo(),
   proximity: ProximityService = makeProximity(),
-): { svc: GuestService; sessions: jest.Mocked<SessionService>; guests: jest.Mocked<GuestRepository>; wallets: jest.Mocked<GuestWalletRepository> } => {
+  moderation: jest.Mocked<ModerationService> = makeModeration(),
+): { svc: GuestService; sessions: jest.Mocked<SessionService>; guests: jest.Mocked<GuestRepository>; wallets: jest.Mocked<GuestWalletRepository>; moderation: jest.Mocked<ModerationService> } => {
   const sessions = makeSessions(session);
-  const svc = new GuestService(sessions, qr, guests, wallets, guestJwt, proximity);
-  return { svc, sessions, guests, wallets };
+  const svc = new GuestService(sessions, qr, guests, wallets, guestJwt, proximity, moderation);
+  return { svc, sessions, guests, wallets, moderation };
 };
 
 describe('GuestService.joinSession (proof + wallet + JWT)', () => {
@@ -162,9 +170,25 @@ describe('GuestService.joinSession (proof + wallet + JWT)', () => {
     });
 
     expect(guests.create).not.toHaveBeenCalled();
+    expect(guests.findLatestByDevice).toHaveBeenCalledWith(SESSION_ID, 'fp-1');
     expect(guests.touchLastSeen).toHaveBeenCalledWith(GUEST_ID);
     expect(wallets.create).not.toHaveBeenCalled();
     expect(result.wallet.boostTokens).toBe(1);
+  });
+
+  it('blocks a banned device from rejoining', async () => {
+    const banned = guestRecord({ deviceHash: 'fp-1', status: 'BANNED' });
+    const guests = makeGuestRepo(banned);
+    const { svc } = buildService(sessionRecord(), new QrTokenService(), guests);
+
+    await expect(
+      svc.joinSession(SESSION_ID, {
+        displayName: 'Alice',
+        joinCode: 'ABCD12',
+        deviceHash: 'fp-1',
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(guests.create).not.toHaveBeenCalled();
   });
 
   it('propagates SESSION_EXPIRED from sessionService.loadJoinable', async () => {
@@ -177,6 +201,7 @@ describe('GuestService.joinSession (proof + wallet + JWT)', () => {
       makeWalletRepo(),
       guestJwt,
       makeProximity(),
+      makeModeration(),
     );
     await expect(
       svc.joinSession(SESSION_ID, { displayName: 'A', joinCode: 'ABCD12' }),

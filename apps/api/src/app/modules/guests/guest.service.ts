@@ -7,6 +7,7 @@ import {
 } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
 import { ProximityService } from '../proximity/proximity.service';
+import { ModerationService } from '../moderation/moderation.service';
 import { JoinCodeService } from '../sessions/join-code.service';
 import { QrTokenService } from '../sessions/qr-token.service';
 import { SessionService } from '../sessions/session.service';
@@ -49,6 +50,7 @@ export class GuestService {
     private readonly wallets: GuestWalletRepository,
     private readonly guestJwt: GuestJwtService,
     private readonly proximity: ProximityService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async joinSession(sessionId: string, input: JoinSessionInput): Promise<JoinSessionResult> {
@@ -58,6 +60,11 @@ export class GuestService {
         'Either joinCode or qrToken is required to join a session.',
       );
     }
+
+    await this.moderation.assertJoinAllowed(sessionId, {
+      displayName: input.displayName,
+      ...(input.deviceHash ? { deviceHash: input.deviceHash } : {}),
+    });
 
     const session = await this.sessions.loadJoinable(sessionId);
 
@@ -120,11 +127,17 @@ export class GuestService {
       );
     }
 
-    // If the same device is rejoining an active session, reuse the existing
-    // guest row so we don't fragment the wallet across multiple identities.
+    // If the same device is rejoining, reuse the existing non-left guest row
+    // so discipline sticks to the device and wallets are not fragmented.
     let guest: SessionGuestRecord | null = null;
     if (input.deviceHash) {
-      guest = await this.guests.findActiveByDevice(sessionId, input.deviceHash);
+      const deviceGuest = await this.guests.findLatestByDevice(sessionId, input.deviceHash);
+      if (deviceGuest?.status === 'BANNED') {
+        throw new DomainError('FORBIDDEN', 'This device is banned from the session.');
+      }
+      if (deviceGuest && deviceGuest.status !== 'LEFT') {
+        guest = deviceGuest;
+      }
     }
     if (!guest) {
       guest = await this.guests.create({

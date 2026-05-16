@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { QueueEntryDto, TrackDto } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
+import { ModerationService } from '../moderation/moderation.service';
 import { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { ScoringService } from '../scoring/scoring.service';
 import { SessionService } from '../sessions/session.service';
@@ -25,6 +26,7 @@ export class QueueService {
     private readonly entries: QueueEntryRepository,
     private readonly redisQueue: RedisQueueRepository,
     private readonly scoring: ScoringService,
+    private readonly moderation: ModerationService,
     @Optional()
     private readonly realtime?: RealtimeEventPublisher,
   ) {}
@@ -35,14 +37,15 @@ export class QueueService {
     spotifyTrack: SpotifyTrackItemDto,
   ): Promise<QueueEntryDto> {
     const session = await this.sessions.loadJoinable(sessionId);
+    await this.moderation.assertGuestCanMutateQueue(sessionId, guestId, 'queue_add');
 
     const normalized = this.normalizer.normalize(spotifyTrack);
     if (!normalized) {
       throw new DomainError('VALIDATION_FAILED', 'Spotify track could not be normalized.');
     }
-    if (!session.settings.allowExplicitTracks && normalized.explicit) {
-      throw new DomainError('VALIDATION_FAILED', 'This session does not allow explicit tracks.');
-    }
+    await this.moderation.assertTrackAllowed(sessionId, normalized, {
+      allowExplicitTracks: session.settings.allowExplicitTracks,
+    });
 
     const track = await this.tracks.upsert(normalized);
 
@@ -108,8 +111,9 @@ export class QueueService {
     });
   }
 
-  async listSession(sessionId: string): Promise<QueueEntryDto[]> {
+  async listSession(sessionId: string, guestId: string): Promise<QueueEntryDto[]> {
     await this.sessions.loadJoinable(sessionId);
+    await this.moderation.assertGuestCanReadQueue(sessionId, guestId);
     const rows = await this.entries.listBySessionWithTrack(sessionId);
     return rows.map((row) => this.toDtoFromWithTrack(row));
   }
@@ -122,6 +126,7 @@ export class QueueService {
     if (entry.addedByGuestId !== guestId) {
       throw new DomainError('FORBIDDEN', 'You can only remove your own queue entries.');
     }
+    await this.moderation.assertGuestCanMutateQueue(entry.sessionId, guestId, 'queue_remove');
     if (entry.status !== 'PENDING') {
       // Once an entry is LOCKED or further along, removal becomes a host
       // moderation action (M14). Guests can only retract while still pending.

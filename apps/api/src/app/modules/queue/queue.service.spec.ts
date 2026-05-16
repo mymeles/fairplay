@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_SETTINGS } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
+import type { ModerationService } from '../moderation/moderation.service';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { ScoringService } from '../scoring/scoring.service';
 import type { PartySessionRecord } from '../sessions/session.repository';
@@ -128,12 +129,20 @@ const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
     publishQueueUpdated: jest.fn(),
   }) as unknown as jest.Mocked<RealtimeEventPublisher>;
 
+const makeModeration = (): jest.Mocked<ModerationService> =>
+  ({
+    assertGuestCanMutateQueue: jest.fn().mockResolvedValue(undefined),
+    assertGuestCanReadQueue: jest.fn().mockResolvedValue(undefined),
+    assertTrackAllowed: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<ModerationService>;
+
 const makeService = (record: PartySessionRecord = sessionRecord()) => {
   const sessions = makeSessions(record);
   const tracks = makeTracks();
   const entries = makeEntries();
   const redisQueue = makeRedisQueue();
   const scoring = new ScoringService();
+  const moderation = makeModeration();
   const realtime = makeRealtime();
   const service = new QueueService(
     sessions,
@@ -142,18 +151,24 @@ const makeService = (record: PartySessionRecord = sessionRecord()) => {
     entries,
     redisQueue,
     scoring,
+    moderation,
     realtime,
   );
-  return { service, sessions, tracks, entries, redisQueue, realtime };
+  return { service, sessions, tracks, entries, redisQueue, moderation, realtime };
 };
 
 describe('QueueService.addTrack', () => {
   it('upserts the track, creates the entry, and pushes to Redis ZSET', async () => {
-    const { service, sessions, tracks, entries, redisQueue, realtime } = makeService();
+    const { service, sessions, tracks, entries, redisQueue, moderation, realtime } = makeService();
 
     const result = await service.addTrack(SESSION_ID, GUEST_ID, spotifyTrack());
 
     expect(sessions.loadJoinable).toHaveBeenCalledWith(SESSION_ID);
+    expect(moderation.assertGuestCanMutateQueue).toHaveBeenCalledWith(
+      SESSION_ID,
+      GUEST_ID,
+      'queue_add',
+    );
     expect(tracks.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         spotifyUri: 'spotify:track:abc123',
@@ -191,10 +206,13 @@ describe('QueueService.addTrack', () => {
   });
 
   it('rejects explicit tracks when the session disallows them', async () => {
-    const { service, tracks } = makeService(
+    const { service, tracks, moderation } = makeService(
       sessionRecord({
         settings: { ...DEFAULT_SESSION_SETTINGS, allowExplicitTracks: false },
       }),
+    );
+    moderation.assertTrackAllowed.mockRejectedValueOnce(
+      new DomainError('VALIDATION_FAILED', 'explicit'),
     );
 
     await expect(
@@ -268,6 +286,7 @@ describe('QueueService.addTrack', () => {
       entries,
       redisQueue,
       new ScoringService(),
+      makeModeration(),
     );
 
     await expect(service.addTrack(SESSION_ID, GUEST_ID, spotifyTrack())).rejects.toMatchObject({
@@ -295,7 +314,7 @@ describe('QueueService.listSession', () => {
       }),
     ]);
 
-    const result = await service.listSession(SESSION_ID);
+    const result = await service.listSession(SESSION_ID, GUEST_ID);
 
     expect(result.map((entry) => entry.track.spotifyTrackId)).toEqual(['t1', 't2']);
     expect(result.map((entry) => entry.score)).toEqual([10, 5]);

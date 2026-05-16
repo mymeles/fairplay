@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { ModerationModule } from '../moderation/moderation.module';
 import { ProximityModule } from '../proximity/proximity.module';
 import { SessionModule } from '../sessions/session.module';
 import { GuestAuthGuard } from './guest-auth.guard';
@@ -8,7 +9,7 @@ import { GuestService } from './guest.service';
 import { GuestWalletRepository } from './guest-wallet.repository';
 
 @Module({
-  imports: [forwardRef(() => SessionModule), ProximityModule],
+  imports: [forwardRef(() => SessionModule), ProximityModule, ModerationModule],
   providers: [
     GuestService,
     GuestAuthGuard,

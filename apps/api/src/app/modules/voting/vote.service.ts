@@ -2,13 +2,13 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { VoteDto, VoteValue } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
 import { PrismaService } from '../database/prisma.service';
+import { ModerationService } from '../moderation/moderation.service';
 import { QueueEntryRecord, QueueEntryRepository } from '../queue/queue-entry.repository';
 import { RedisQueueRepository } from '../queue/redis-queue.repository';
 import { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { ScoringService } from '../scoring/scoring.service';
 import { PartySessionRecord } from '../sessions/session.repository';
 import { SessionService } from '../sessions/session.service';
-import { VoteRateLimiter } from './vote-rate-limiter';
 import type { VoteRecord } from './vote.repository';
 import { VoteRepository } from './vote.repository';
 
@@ -42,7 +42,7 @@ export class VoteService {
     private readonly entries: QueueEntryRepository,
     private readonly votes: VoteRepository,
     private readonly redisQueue: RedisQueueRepository,
-    private readonly rateLimiter: VoteRateLimiter,
+    private readonly moderation: ModerationService,
     private readonly scoring: ScoringService,
     @Optional()
     private readonly realtime?: RealtimeEventPublisher,
@@ -54,7 +54,7 @@ export class VoteService {
     guestSessionId: string,
     value: VoteValue,
   ): Promise<VoteResult> {
-    await this.rateLimiter.assertAllowed(guestId);
+    await this.moderation.assertGuestCanMutateQueue(guestSessionId, guestId, 'vote');
 
     const { entry, session } = await this.loadVotableEntry(entryId, guestSessionId);
 
@@ -115,7 +115,7 @@ export class VoteService {
   }
 
   async removeVote(entryId: string, guestId: string, guestSessionId: string): Promise<VoteResult> {
-    await this.rateLimiter.assertAllowed(guestId);
+    await this.moderation.assertGuestCanMutateQueue(guestSessionId, guestId, 'vote');
 
     const { entry, session } = await this.loadVotableEntry(entryId, guestSessionId);
 

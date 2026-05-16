@@ -3,6 +3,7 @@ import type { GuestWalletSummary, QueueEntryStatus } from '@fairplay/shared-type
 import { DomainError } from '@fairplay/shared-utils';
 import { PrismaService } from '../database/prisma.service';
 import { GuestWalletRepository } from '../guests/guest-wallet.repository';
+import { ModerationService } from '../moderation/moderation.service';
 import {
   QueueEntryRecord,
   QueueEntryRepository,
@@ -45,6 +46,7 @@ export class BoostService {
     private readonly redisQueue: RedisQueueRepository,
     private readonly scoring: ScoringService,
     private readonly ledger: TokenLedgerService,
+    private readonly moderation: ModerationService,
     @Optional()
     private readonly realtime?: RealtimeEventPublisher,
   ) {}
@@ -54,6 +56,7 @@ export class BoostService {
     guestId: string,
     guestSessionId: string,
   ): Promise<ApplyBoostResult> {
+    await this.moderation.assertGuestCanMutateQueue(guestSessionId, guestId, 'boost');
     const { entry, session } = await this.loadBoostableEntry(entryId, guestSessionId);
     const existingSpend = await this.ledger.findEntrySpend(
       entryId,

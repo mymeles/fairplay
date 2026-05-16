@@ -1,6 +1,7 @@
 import { DEFAULT_SESSION_SETTINGS } from '@fairplay/shared-types';
 import type { PrismaService } from '../database/prisma.service';
 import type { GuestWalletRecord, GuestWalletRepository } from '../guests/guest-wallet.repository';
+import type { ModerationService } from '../moderation/moderation.service';
 import type { QueueEntryRecord, QueueEntryRepository } from '../queue/queue-entry.repository';
 import type { RedisQueueRepository } from '../queue/redis-queue.repository';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
@@ -102,6 +103,11 @@ const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
     publishTokenUpdated: jest.fn(),
   }) as unknown as jest.Mocked<RealtimeEventPublisher>;
 
+const makeModeration = (): jest.Mocked<ModerationService> =>
+  ({
+    assertGuestCanMutateQueue: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<ModerationService>;
+
 const makeService = (record = entry()) => {
   const prisma = makePrisma();
   const sessions = makeSessions();
@@ -109,6 +115,7 @@ const makeService = (record = entry()) => {
   const wallets = makeWallets();
   const redisQueue = makeRedisQueue();
   const ledger = makeLedger();
+  const moderation = makeModeration();
   const realtime = makeRealtime();
   const service = new BoostService(
     prisma,
@@ -118,17 +125,23 @@ const makeService = (record = entry()) => {
     redisQueue,
     new ScoringService(),
     ledger,
+    moderation,
     realtime,
   );
-  return { service, prisma, sessions, entries, wallets, redisQueue, ledger, realtime };
+  return { service, prisma, sessions, entries, wallets, redisQueue, ledger, moderation, realtime };
 };
 
 describe('BoostService.applyBoost', () => {
   it('spends one boost token, increments boost credits, recalculates, and publishes', async () => {
-    const { service, wallets, entries, redisQueue, ledger, realtime } = makeService();
+    const { service, wallets, entries, redisQueue, ledger, moderation, realtime } = makeService();
 
     const result = await service.applyBoost(ENTRY_ID, GUEST_ID, SESSION_ID);
 
+    expect(moderation.assertGuestCanMutateQueue).toHaveBeenCalledWith(
+      SESSION_ID,
+      GUEST_ID,
+      'boost',
+    );
     expect(ledger.findEntrySpend).toHaveBeenCalledWith(
       ENTRY_ID,
       GUEST_ID,

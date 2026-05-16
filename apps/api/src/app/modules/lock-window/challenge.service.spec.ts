@@ -1,6 +1,7 @@
 import { DEFAULT_SESSION_SETTINGS } from '@fairplay/shared-types';
 import type { PrismaService } from '../database/prisma.service';
 import type { GuestWalletRecord, GuestWalletRepository } from '../guests/guest-wallet.repository';
+import type { ModerationService } from '../moderation/moderation.service';
 import type { QueueEntryRecord, QueueEntryRepository } from '../queue/queue-entry.repository';
 import type { RedisQueueRepository } from '../queue/redis-queue.repository';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
@@ -107,6 +108,11 @@ const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
     publishTokenUpdated: jest.fn(),
   }) as unknown as jest.Mocked<RealtimeEventPublisher>;
 
+const makeModeration = (): jest.Mocked<ModerationService> =>
+  ({
+    assertGuestCanMutateQueue: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<ModerationService>;
+
 const makeService = (record = entry()) => {
   const prisma = makePrisma();
   const sessions = makeSessions();
@@ -115,6 +121,7 @@ const makeService = (record = entry()) => {
   const redisQueue = makeRedisQueue();
   const scoreRebuild = makeScoreRebuild();
   const ledger = makeLedger();
+  const moderation = makeModeration();
   const realtime = makeRealtime();
   const service = new ChallengeService(
     prisma,
@@ -124,17 +131,23 @@ const makeService = (record = entry()) => {
     redisQueue,
     scoreRebuild,
     ledger,
+    moderation,
     realtime,
   );
-  return { service, prisma, sessions, entries, wallets, redisQueue, scoreRebuild, ledger, realtime };
+  return { service, prisma, sessions, entries, wallets, redisQueue, scoreRebuild, ledger, moderation, realtime };
 };
 
 describe('ChallengeService.challengeLock', () => {
   it('spends one challenge token, unlocks the entry, and recalculates rank', async () => {
-    const { service, entries, wallets, redisQueue, scoreRebuild, ledger, realtime } = makeService();
+    const { service, entries, wallets, redisQueue, scoreRebuild, ledger, moderation, realtime } = makeService();
 
     const result = await service.challengeLock(ENTRY_ID, GUEST_ID, SESSION_ID);
 
+    expect(moderation.assertGuestCanMutateQueue).toHaveBeenCalledWith(
+      SESSION_ID,
+      GUEST_ID,
+      'challenge',
+    );
     expect(wallets.spendChallengeToken).toHaveBeenCalledWith(
       GUEST_ID,
       SESSION_ID,

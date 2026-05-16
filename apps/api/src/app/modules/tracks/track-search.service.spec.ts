@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_SETTINGS, TrackDto } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
+import type { ModerationService } from '../moderation/moderation.service';
 import type { RedisService } from '../redis/redis.service';
 import type { PartySessionRecord } from '../sessions/session.repository';
 import type { SessionService } from '../sessions/session.service';
@@ -97,12 +98,26 @@ const makeRedis = () => {
   return { redis, client };
 };
 
+const makeModeration = (): jest.Mocked<ModerationService> =>
+  ({
+    assertGuestCanSearch: jest.fn().mockResolvedValue(undefined),
+    assertTrackAllowed: jest.fn().mockResolvedValue(undefined),
+    filterAllowedTracks: jest.fn().mockImplementation(
+      async (
+        _sessionId: string,
+        tracks: TrackDto[],
+        options: { allowExplicitTracks: boolean },
+      ) => (options.allowExplicitTracks ? tracks : tracks.filter((track) => !track.explicit)),
+    ),
+  }) as unknown as jest.Mocked<ModerationService>;
+
 const makeService = (record: PartySessionRecord = sessionRecord()) => {
   const sessions = makeSessions(record);
   const refresh = makeRefresh();
   const spotify = makeSpotify();
   const tracks = makeTracks();
   const { redis, client } = makeRedis();
+  const moderation = makeModeration();
   const service = new TrackSearchService(
     sessions,
     refresh,
@@ -110,8 +125,9 @@ const makeService = (record: PartySessionRecord = sessionRecord()) => {
     new TrackNormalizer(),
     tracks,
     redis,
+    moderation,
   );
-  return { service, sessions, refresh, spotify, tracks, client };
+  return { service, sessions, refresh, spotify, tracks, client, moderation };
 };
 
 describe('TrackSearchService.search', () => {
@@ -124,18 +140,19 @@ describe('TrackSearchService.search', () => {
   });
 
   it('returns cached normalized results without calling Spotify', async () => {
-    const { service, refresh, spotify, client } = makeService();
+    const { service, refresh, spotify, client, moderation } = makeService();
     client.get.mockResolvedValueOnce(JSON.stringify([normalizedTrack('cached')]));
 
     const result = await service.search(SESSION_ID, GUEST_ID, 'dua');
 
     expect(result).toEqual([normalizedTrack('cached')]);
+    expect(moderation.assertGuestCanSearch).toHaveBeenCalledWith(SESSION_ID, GUEST_ID);
     expect(refresh.getValidAccessToken).not.toHaveBeenCalled();
     expect(spotify.searchTracks).not.toHaveBeenCalled();
   });
 
   it('uses the host token, filters explicit tracks when disabled, and caches results', async () => {
-    const { service, refresh, spotify, client } = makeService(
+    const { service, refresh, spotify, client, moderation } = makeService(
       sessionRecord({
         settings: { ...DEFAULT_SESSION_SETTINGS, allowExplicitTracks: false },
       }),
@@ -150,6 +167,11 @@ describe('TrackSearchService.search', () => {
     expect(refresh.getValidAccessToken).toHaveBeenCalledWith(HOST_ID);
     expect(spotify.searchTracks).toHaveBeenCalledWith('AT', 'party', 10);
     expect(result).toEqual([normalizedTrack('clean', false)]);
+    expect(moderation.filterAllowedTracks).toHaveBeenCalledWith(
+      SESSION_ID,
+      [normalizedTrack('clean', false), normalizedTrack('explicit', true)],
+      { allowExplicitTracks: false },
+    );
     expect(client.set).toHaveBeenCalledWith(
       expect.stringContaining(`party:${SESSION_ID}:track-search:clean:`),
       JSON.stringify([normalizedTrack('clean', false)]),
@@ -216,10 +238,15 @@ describe('TrackSearchService.search', () => {
 
 describe('TrackSearchService.normalizeTrack', () => {
   it('normalizes and stores one Spotify track', async () => {
-    const { service, tracks } = makeService();
+    const { service, tracks, moderation } = makeService();
     const result = await service.normalizeTrack(SESSION_ID, GUEST_ID, spotifyTrack('abc'));
 
     expect(result).toEqual(normalizedTrack('abc'));
+    expect(moderation.assertTrackAllowed).toHaveBeenCalledWith(
+      SESSION_ID,
+      normalizedTrack('abc'),
+      { allowExplicitTracks: true },
+    );
     expect(tracks.upsert).toHaveBeenCalledWith(normalizedTrack('abc'));
   });
 
@@ -231,4 +258,3 @@ describe('TrackSearchService.normalizeTrack', () => {
     expect(tracks.upsert).not.toHaveBeenCalled();
   });
 });
-

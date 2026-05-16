@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import type { TrackDto } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
+import { ModerationService } from '../moderation/moderation.service';
 import { RedisService } from '../redis/redis.service';
 import { SessionService } from '../sessions/session.service';
 import { SpotifyTokenRefreshService } from '../spotify-playback/spotify-token-refresh.service';
@@ -25,6 +26,7 @@ export class TrackSearchService {
     private readonly normalizer: TrackNormalizer,
     private readonly tracks: TrackRepository,
     private readonly redis: RedisService,
+    private readonly moderation: ModerationService,
   ) {}
 
   async search(sessionId: string, guestId: string, query: string): Promise<TrackDto[]> {
@@ -33,6 +35,7 @@ export class TrackSearchService {
       throw new DomainError('VALIDATION_FAILED', 'Search query cannot be empty.');
     }
 
+    await this.moderation.assertGuestCanSearch(sessionId, guestId);
     const session = await this.sessions.loadJoinable(sessionId);
     const queryHash = hashText(normalizedQuery);
     const cacheKey = searchCacheKey(
@@ -42,11 +45,14 @@ export class TrackSearchService {
     );
     const cached = await this.readSearchCache(cacheKey);
     if (cached) {
+      const filteredCached = await this.moderation.filterAllowedTracks(sessionId, cached, {
+        allowExplicitTracks: session.settings.allowExplicitTracks,
+      });
       this.logger.log(
-        { sessionId, guestId, queryHash, count: cached.length, cacheHit: true },
+        { sessionId, guestId, queryHash, count: filteredCached.length, cacheHit: true },
         'Track search returned cached results.',
       );
-      return cached;
+      return filteredCached;
     }
 
     await this.throwIfSpotifyBackoffActive(session.hostUserId);
@@ -56,9 +62,9 @@ export class TrackSearchService {
         this.spotify.searchTracks(token, normalizedQuery, SPOTIFY_SEARCH_LIMIT),
       );
       const normalized = this.normalizer.normalizeMany(spotifyTracks);
-      const filtered = session.settings.allowExplicitTracks
-        ? normalized
-        : normalized.filter((track) => !track.explicit);
+      const filtered = await this.moderation.filterAllowedTracks(sessionId, normalized, {
+        allowExplicitTracks: session.settings.allowExplicitTracks,
+      });
 
       await this.writeSearchCache(cacheKey, filtered);
       this.logger.log(
@@ -93,11 +99,15 @@ export class TrackSearchService {
     guestId: string,
     spotifyTrack: SpotifyTrackItemDto,
   ): Promise<TrackDto> {
-    await this.sessions.loadJoinable(sessionId);
+    await this.moderation.assertGuestCanSearch(sessionId, guestId);
+    const session = await this.sessions.loadJoinable(sessionId);
     const normalized = this.normalizer.normalize(spotifyTrack);
     if (!normalized) {
       throw new DomainError('VALIDATION_FAILED', 'Spotify track could not be normalized.');
     }
+    await this.moderation.assertTrackAllowed(sessionId, normalized, {
+      allowExplicitTracks: session.settings.allowExplicitTracks,
+    });
 
     await this.tracks.upsert(normalized);
     this.logger.log(
@@ -210,4 +220,3 @@ const isTrackDto = (value: unknown): value is TrackDto => {
     (candidate.artworkUrl === undefined || typeof candidate.artworkUrl === 'string')
   );
 };
-

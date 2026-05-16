@@ -177,7 +177,7 @@ describe('QueueController', () => {
         .set('authorization', authHeader())
         .expect(200);
       expect(res.body.data).toEqual([queueEntry]);
-      expect(queueService.listSession).toHaveBeenCalledWith(SESSION_ID);
+      expect(queueService.listSession).toHaveBeenCalledWith(SESSION_ID, GUEST_ID);
     });
   });
 

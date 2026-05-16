@@ -21,6 +21,7 @@ import { RunnerModule } from './modules/runner/runner.module';
 import { NowPlayingModule } from './modules/now-playing/now-playing.module';
 import { HostControlModule } from './modules/host-control/host-control.module';
 import { TokenModule } from './modules/tokens/token.module';
+import { ModerationModule } from './modules/moderation/moderation.module';
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 
@@ -48,6 +49,7 @@ import { MiddlewareConsumer, NestModule } from '@nestjs/common';
     NowPlayingModule,
     HostControlModule,
     TokenModule,
+    ModerationModule,
   ],
 })
 export class AppModule implements NestModule {

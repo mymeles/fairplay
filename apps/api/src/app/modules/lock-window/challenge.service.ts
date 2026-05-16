@@ -3,6 +3,7 @@ import type { GuestWalletSummary, QueueEntryStatus } from '@fairplay/shared-type
 import { DomainError } from '@fairplay/shared-utils';
 import { PrismaService } from '../database/prisma.service';
 import { GuestWalletRepository } from '../guests/guest-wallet.repository';
+import { ModerationService } from '../moderation/moderation.service';
 import { QueueEntryRecord, QueueEntryRepository } from '../queue/queue-entry.repository';
 import { RedisQueueRepository } from '../queue/redis-queue.repository';
 import { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
@@ -28,6 +29,7 @@ export class ChallengeService {
     private readonly redisQueue: RedisQueueRepository,
     private readonly scoreRebuild: ScoreRebuildService,
     private readonly ledger: TokenLedgerService,
+    private readonly moderation: ModerationService,
     @Optional()
     private readonly realtime?: RealtimeEventPublisher,
   ) {}
@@ -37,6 +39,7 @@ export class ChallengeService {
     guestId: string,
     guestSessionId: string,
   ): Promise<ChallengeLockResult> {
+    await this.moderation.assertGuestCanMutateQueue(guestSessionId, guestId, 'challenge');
     const entry = await this.loadChallengeableEntry(entryId, guestSessionId);
     await this.sessions.loadJoinable(entry.sessionId);
 

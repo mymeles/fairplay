@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { GuestModule } from '../guests/guest.module';
+import { ModerationModule } from '../moderation/moderation.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { SessionModule } from '../sessions/session.module';
@@ -10,7 +11,7 @@ import { QueueService } from './queue.service';
 import { RedisQueueRepository } from './redis-queue.repository';
 
 @Module({
-  imports: [GuestModule, SessionModule, TrackModule, ScoringModule, RealtimeModule],
+  imports: [GuestModule, SessionModule, TrackModule, ScoringModule, RealtimeModule, ModerationModule],
   controllers: [QueueController],
   providers: [QueueService, QueueEntryRepository, RedisQueueRepository],
   exports: [QueueService, QueueEntryRepository, RedisQueueRepository],

@@ -21,6 +21,9 @@ pnpm-debug.log*
 *.swp
 .DS_Store
 
+# Claude Code worktrees and local agent state
+.claude/
+
 # Prisma artefacts
 apps/api/prisma/migrations/dev.db*
 
