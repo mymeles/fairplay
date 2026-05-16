@@ -1,0 +1,14 @@
+{
+  "name": "@fairplay/api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "ts-node -r tsconfig-paths/register --project tsconfig.build.json src/main.ts",
+    "test": "jest --config jest.config.ts",
+    "test:integration": "jest --config jest.integration.config.ts --runInBand",
+    "lint": "eslint \"src/**/*.ts\""
+  }
+}

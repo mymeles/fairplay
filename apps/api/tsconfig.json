@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "../../dist/apps/api",
+    "types": ["node", "jest"],
+    "module": "commonjs",
+    "target": "es2022",
+    "declaration": false,
+    "baseUrl": ".",
+    "paths": {}
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

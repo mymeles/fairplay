@@ -1,0 +1,13 @@
+{
+  "name": "@fairplay/runner",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "ts-node --project tsconfig.build.json src/main.ts",
+    "test": "jest --config jest.config.ts",
+    "lint": "eslint \"src/**/*.ts\""
+  }
+}

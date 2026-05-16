@@ -1,0 +1,7 @@
+# Supabase project config (FairPlay Party DJ).
+#
+# The authoritative migrations live in this directory and have already been
+# applied via the Supabase MCP API. Edge Functions are under ./functions/*.
+# Keep `project_id` in sync with the linked Supabase project.
+
+project_id = "zgublzgoejdzexwpicvb"

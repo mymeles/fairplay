@@ -1,0 +1,182 @@
+// FairPlay Party DJ — Prisma schema.
+//
+// Database lives on Supabase Postgres. Migrations are applied through the
+// Supabase migration API (see supabase/migrations/*.sql); Prisma is used here
+// for typed access from NestJS only — do NOT use `prisma migrate dev` against
+// the Supabase project. Use `prisma db pull` to refresh after a Supabase
+// migration, or hand-edit this file to mirror the migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.Uuid
+  email            String?  @unique
+  displayName      String?  @map("display_name")
+  spotifyUserId    String?  @unique @map("spotify_user_id")
+  selectedDeviceId String?  @map("selected_device_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  spotifyToken SpotifyToken?
+
+  @@index([spotifyUserId])
+  @@map("users")
+}
+
+model SpotifyToken {
+  id                     String   @id @default(uuid()) @db.Uuid
+  userId                 String   @unique @map("user_id") @db.Uuid
+  encryptedRefreshToken  String   @map("encrypted_refresh_token")
+  encryptedAccessToken   String?  @map("encrypted_access_token")
+  accessTokenHash        String?  @map("access_token_hash")
+  expiresAt              DateTime @map("expires_at") @db.Timestamptz(6)
+  scopes                 String[]
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("spotify_tokens")
+}
+
+model OAuthState {
+  state         String   @id
+  codeVerifier  String   @map("code_verifier")
+  redirectTo    String?  @map("redirect_to")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+model PartySession {
+  id                       String   @id @default(uuid()) @db.Uuid
+  hostUserId               String   @map("host_user_id") @db.Uuid
+  joinCode                 String   @map("join_code")
+  qrTokenHash              String   @map("qr_token_hash")
+  status                   String   @default("ACTIVE")
+  selectedSpotifyDeviceId  String?  @map("selected_spotify_device_id")
+  venueLat                 Decimal? @map("venue_lat") @db.Decimal
+  venueLng                 Decimal? @map("venue_lng") @db.Decimal
+  venueRadiusMeters        Int?     @map("venue_radius_meters")
+  venueWifiHash            String?  @map("venue_wifi_hash")
+  settingsJson             Json     @default("{}") @map("settings_json")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt                DateTime @map("expires_at") @db.Timestamptz(6)
+  endedAt                  DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  guests       SessionGuest[]
+  guestWallets GuestWallet[]
+
+  @@index([hostUserId, status])
+  @@index([status, expiresAt])
+  @@map("party_sessions")
+}
+
+model SessionGuest {
+  id            String   @id @default(uuid()) @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  displayName   String   @map("display_name")
+  deviceHash    String?  @map("device_hash")
+  role          String   @default("GUEST")
+  status        String   @default("ACTIVE")
+  joinedAt      DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+  lastSeenAt    DateTime? @map("last_seen_at") @db.Timestamptz(6)
+
+  session PartySession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  wallet  GuestWallet?
+
+  @@index([sessionId])
+  @@index([sessionId, deviceHash])
+  @@map("session_guests")
+}
+
+model GuestWallet {
+  id               String   @id @default(uuid()) @db.Uuid
+  sessionId        String   @map("session_id") @db.Uuid
+  guestId          String   @unique @map("guest_id") @db.Uuid
+  boostTokens      Int      @default(0) @map("boost_tokens")
+  challengeTokens  Int      @default(0) @map("challenge_tokens")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session PartySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guest   SessionGuest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, guestId])
+  @@index([guestId])
+  @@map("guest_wallets")
+}
+
+model Track {
+  id              String   @id @default(uuid()) @db.Uuid
+  spotifyUri      String   @unique @map("spotify_uri")
+  spotifyTrackId  String   @map("spotify_track_id")
+  title           String
+  artist          String
+  album           String?
+  durationMs      Int      @map("duration_ms")
+  artworkUrl      String?  @map("artwork_url")
+  explicit        Boolean  @default(false)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  queueEntries QueueEntry[]
+
+  @@index([spotifyTrackId])
+  @@map("tracks")
+}
+
+model Vote {
+  id        String   @id @default(uuid()) @db.Uuid
+  entryId   String   @map("entry_id") @db.Uuid
+  guestId   String   @map("guest_id") @db.Uuid
+  value     Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  entry QueueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, guestId])
+  @@index([entryId])
+  @@index([guestId])
+  @@map("votes")
+}
+
+model QueueEntry {
+  id                String    @id @default(uuid()) @db.Uuid
+  sessionId         String    @map("session_id") @db.Uuid
+  trackId           String    @map("track_id") @db.Uuid
+  addedByGuestId    String?   @map("added_by_guest_id") @db.Uuid
+  status            String    @default("PENDING")
+  upvotes           Int       @default(0)
+  downvotes         Int       @default(0)
+  boostCredits      Int       @default(0) @map("boost_credits")
+  score             Decimal   @default(0) @db.Decimal
+  lockedUntil       DateTime? @map("locked_until") @db.Timestamptz(6)
+  hostPinned        Boolean   @default(false) @map("host_pinned")
+  spotifyQueuedAt   DateTime? @map("spotify_queued_at") @db.Timestamptz(6)
+  playingAt         DateTime? @map("playing_at") @db.Timestamptz(6)
+  playedAt          DateTime? @map("played_at") @db.Timestamptz(6)
+  removedAt         DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  track Track @relation(fields: [trackId], references: [id])
+  votes Vote[]
+
+  @@index([sessionId, status])
+  @@index([sessionId, score(sort: Desc)])
+  @@index([sessionId, trackId])
+  @@index([addedByGuestId])
+  @@map("queue_entries")
+}

@@ -1,0 +1,33 @@
+node_modules/
+dist/
+build/
+coverage/
+.nx/
+tmp/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Prisma artefacts
+apps/api/prisma/migrations/dev.db*
+
+# Next.js
+.next/
+out/
+
+# Test
+*.lcov
+.eslintcache
