@@ -36,8 +36,9 @@ export default function HostDevicesPage({ params }: { params: { sessionId: strin
   const devices = useQuery({
     queryKey: qk.devices,
     queryFn: ({ signal }) => listSpotifyDevices(signal),
-    refetchInterval: 15_000,
   });
+  const devicesRetryAfterSec = getSpotifyRetryAfterSec(devices.error);
+  const devicesRefreshDisabled = devices.isFetching || devicesRetryAfterSec !== null;
 
   const select = useMutation({
     mutationFn: (deviceId: string) => selectSpotifyDevice(deviceId),
@@ -71,7 +72,11 @@ export default function HostDevicesPage({ params }: { params: { sessionId: strin
           <h1 className="text-2xl font-bold sm:text-3xl">Playback & runner</h1>
           <p className="text-sm text-ink-muted">Pick a Spotify device and control playback.</p>
         </div>
-        <Button variant="secondary" onClick={() => devices.refetch()}>
+        <Button
+          variant="secondary"
+          onClick={() => devices.refetch()}
+          disabled={devicesRefreshDisabled}
+        >
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       </header>
@@ -192,13 +197,11 @@ const DeviceRow = ({
 
 const DeviceError = ({ error, onRetry }: { error: Error | null; onRetry: () => void }) => {
   const code = error instanceof ApiError ? error.code : 'UNKNOWN';
-  const retryAfterSec =
-    error instanceof ApiError && typeof error.details?.retryAfterSec === 'number'
-      ? error.details.retryAfterSec
-      : null;
+  const retryAfterSec = getSpotifyRetryAfterSec(error);
   const message = error?.message ?? 'Could not load Spotify devices.';
   const retryMessage =
     retryAfterSec !== null ? ` Try again in ${formatRetryAfter(retryAfterSec)}.` : '';
+  const retryDisabled = retryAfterSec !== null;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-danger/40 bg-danger/10 p-3">
@@ -210,13 +213,18 @@ const DeviceError = ({ error, onRetry }: { error: Error | null; onRetry: () => v
         </p>
       </div>
       <div>
-        <Button size="sm" variant="secondary" onClick={onRetry}>
-          <RefreshCw className="h-3 w-3" /> Retry
+        <Button size="sm" variant="secondary" onClick={onRetry} disabled={retryDisabled}>
+          <RefreshCw className="h-3 w-3" /> {retryDisabled ? 'Retry later' : 'Retry'}
         </Button>
       </div>
     </div>
   );
 };
+
+const getSpotifyRetryAfterSec = (error: Error | null): number | null =>
+  error instanceof ApiError && typeof error.details?.retryAfterSec === 'number'
+    ? error.details.retryAfterSec
+    : null;
 
 const formatRetryAfter = (seconds: number): string => {
   if (seconds < 60) return `${seconds}s`;
