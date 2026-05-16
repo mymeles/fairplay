@@ -128,4 +128,27 @@ describe('apiFetch', () => {
 
     expect(result).toBeUndefined();
   });
+
+  it('turns request timeouts into ApiError', async () => {
+    jest.useFakeTimers();
+    globalThis.fetch = jest.fn(
+      (_input: RequestInfo, init: RequestInit = {}) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const promise = apiFetch({ path: '/slow', timeoutMs: 1000 });
+    jest.advanceTimersByTime(1000);
+
+    await expect(promise).rejects.toMatchObject({
+      code: 'REQUEST_TIMEOUT',
+      message: 'Request timed out after 1s.',
+      status: 0,
+      details: { timeoutMs: 1000 },
+    });
+    jest.useRealTimers();
+  });
 });

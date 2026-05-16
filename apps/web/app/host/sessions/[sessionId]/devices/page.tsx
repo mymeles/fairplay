@@ -35,7 +35,7 @@ export default function HostDevicesPage({ params }: { params: { sessionId: strin
 
   const devices = useQuery({
     queryKey: qk.devices,
-    queryFn: listSpotifyDevices,
+    queryFn: ({ signal }) => listSpotifyDevices(signal),
     refetchInterval: 15_000,
   });
 

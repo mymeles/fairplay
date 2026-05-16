@@ -297,10 +297,12 @@ export interface SpotifyDeviceInfo {
   volumePercent: number | null;
 }
 
-export const listSpotifyDevices = () =>
+export const listSpotifyDevices = (signal?: AbortSignal) =>
   apiFetch<{ devices: SpotifyDeviceInfo[]; selectedDeviceId: string | null }>({
     path: '/host/spotify/devices',
     auth: 'host',
+    signal,
+    timeoutMs: 15_000,
   });
 
 export const getSpotifyPlaybackState = () =>

@@ -24,6 +24,7 @@ export interface ApiRequest {
   auth?: AuthRole;
   sessionId?: string;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 export const API_BASE_URL =
@@ -55,13 +56,54 @@ export const apiFetch = async <T>(req: ApiRequest): Promise<T> => {
 
   const url = `${API_BASE_URL}${req.path}${buildQuery(req.query)}`;
 
-  const res = await fetch(url, {
-    method: req.method ?? 'GET',
-    headers,
-    body: req.body === undefined ? undefined : JSON.stringify(req.body),
-    signal: req.signal,
-    cache: 'no-store',
-  });
+  let didTimeout = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let cleanupParentAbort: (() => void) | undefined;
+  let signal = req.signal;
+
+  if (req.timeoutMs && req.timeoutMs > 0 && typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    signal = controller.signal;
+    timeoutId = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, req.timeoutMs);
+
+    if (req.signal) {
+      const abortFromParent = () => controller.abort(req.signal?.reason);
+      if (req.signal.aborted) {
+        abortFromParent();
+      } else {
+        req.signal.addEventListener('abort', abortFromParent, { once: true });
+        cleanupParentAbort = () => req.signal?.removeEventListener('abort', abortFromParent);
+      }
+    }
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: req.method ?? 'GET',
+      headers,
+      body: req.body === undefined ? undefined : JSON.stringify(req.body),
+      signal,
+      cache: 'no-store',
+    });
+  } catch (err) {
+    if (didTimeout) {
+      const seconds = Math.ceil((req.timeoutMs ?? 0) / 1000);
+      throw new ApiError(
+        'REQUEST_TIMEOUT',
+        `Request timed out after ${seconds}s.`,
+        0,
+        { timeoutMs: req.timeoutMs },
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    cleanupParentAbort?.();
+  }
 
   if (res.status === 204) return undefined as T;
 
