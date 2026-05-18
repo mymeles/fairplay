@@ -84,5 +84,28 @@ describe('SpotifySearchAdapter.searchTracks', () => {
       expect((err as DomainError).details.retryAfterSec).toBe(8);
     }
   });
-});
 
+  it('maps network failures to EXTERNAL_DEPENDENCY_FAILED', async () => {
+    const fetcher = jest
+      .fn()
+      .mockRejectedValue(new Error('network down')) as jest.MockedFunction<Fetcher>;
+    const adapter = new SpotifySearchAdapter(fetcher);
+
+    await expect(adapter.searchTracks('access-token', 'anything', 10)).rejects.toMatchObject({
+      code: 'EXTERNAL_DEPENDENCY_FAILED',
+      httpStatus: 502,
+    });
+  });
+
+  it('maps malformed success responses to EXTERNAL_DEPENDENCY_FAILED', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      new Response('not-json', { status: 200 }),
+    ) as jest.MockedFunction<Fetcher>;
+    const adapter = new SpotifySearchAdapter(fetcher);
+
+    await expect(adapter.searchTracks('access-token', 'anything', 10)).rejects.toMatchObject({
+      code: 'EXTERNAL_DEPENDENCY_FAILED',
+      httpStatus: 502,
+    });
+  });
+});

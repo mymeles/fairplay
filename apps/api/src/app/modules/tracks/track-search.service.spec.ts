@@ -222,6 +222,23 @@ describe('TrackSearchService.search', () => {
     );
   });
 
+  it('honors long Spotify search retry windows', async () => {
+    const { service, spotify, client } = makeService();
+    spotify.searchTracks.mockRejectedValue(
+      new DomainError('SPOTIFY_RATE_LIMITED', 'limited', { retryAfterSec: 21_000 }),
+    );
+
+    await expect(service.search(SESSION_ID, GUEST_ID, 'rate')).rejects.toMatchObject({
+      code: 'SPOTIFY_RATE_LIMITED',
+    });
+    expect(client.set).toHaveBeenCalledWith(
+      `spotify:search:backoff:${HOST_ID}`,
+      '1',
+      'EX',
+      21_000,
+    );
+  });
+
   it('short-circuits while a Spotify search backoff key is active', async () => {
     const { service, refresh, spotify, client } = makeService();
     client.get.mockResolvedValueOnce(null).mockResolvedValueOnce('1');

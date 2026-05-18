@@ -13,7 +13,7 @@ import { TrackRepository } from './track.repository';
 
 const SPOTIFY_SEARCH_LIMIT = 10;
 const SEARCH_CACHE_TTL_SECONDS = 60;
-const MAX_BACKOFF_SECONDS = 300;
+const MAX_BACKOFF_SECONDS = 24 * 60 * 60;
 
 @Injectable()
 export class TrackSearchService {

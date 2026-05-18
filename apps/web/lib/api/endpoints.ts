@@ -156,6 +156,7 @@ export const searchTracks = (sessionId: string, q: string, signal?: AbortSignal)
     auth: 'guest',
     sessionId,
     signal,
+    timeoutMs: 15_000,
   });
 
 // ---------------------------------------------------------------------------
@@ -163,8 +164,14 @@ export const searchTracks = (sessionId: string, q: string, signal?: AbortSignal)
 // ---------------------------------------------------------------------------
 
 export interface AddQueueEntryBody {
-  spotifyTrackId?: string;
-  spotifyUri?: string;
+  id: string;
+  uri: string;
+  name: string;
+  artists: { name: string }[];
+  album?: { name?: string; images?: { url: string }[] };
+  duration_ms: number;
+  explicit: boolean;
+  is_local?: boolean;
 }
 
 export const addQueueEntry = (sessionId: string, body: AddQueueEntryBody) =>

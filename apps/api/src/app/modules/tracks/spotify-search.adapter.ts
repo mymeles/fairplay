@@ -55,12 +55,35 @@ export class SpotifySearchAdapter {
     url.searchParams.set('q', query);
     url.searchParams.set('limit', String(limit));
 
-    const res = await this.fetcher(url.toString(), {
-      headers: { authorization: `Bearer ${accessToken}` },
-    });
+    let res: Response;
+    try {
+      res = await this.fetcher(url.toString(), {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+    } catch (err) {
+      this.logger.warn(
+        { err, op: 'searchTracks' },
+        'Spotify search request failed before response.',
+      );
+      throw new DomainError(
+        'EXTERNAL_DEPENDENCY_FAILED',
+        'Spotify search is temporarily unavailable.',
+        { op: 'searchTracks' },
+      );
+    }
     await this.assertOk(res, 'searchTracks');
 
-    const body = (await res.json()) as SpotifySearchResponseDto;
+    let body: SpotifySearchResponseDto;
+    try {
+      body = (await res.json()) as SpotifySearchResponseDto;
+    } catch (err) {
+      this.logger.warn({ err }, 'Spotify search response was malformed.');
+      throw new DomainError(
+        'EXTERNAL_DEPENDENCY_FAILED',
+        'Spotify search response was malformed.',
+        { op: 'searchTracks' },
+      );
+    }
     return body.tracks?.items ?? [];
   }
 
@@ -100,4 +123,3 @@ const safeText = async (res: Response): Promise<string | null> => {
     return null;
   }
 };
-

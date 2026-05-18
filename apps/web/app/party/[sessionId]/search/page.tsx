@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Search } from 'lucide-react';
+import type { TrackDto } from '@fairplay/shared-types';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { TrackResultCard } from '@/components/domain/track-result-card';
-import { addQueueEntry, searchTracks } from '@/lib/api/endpoints';
+import { ApiError } from '@/lib/api/client';
+import { addQueueEntry, searchTracks, type AddQueueEntryBody } from '@/lib/api/endpoints';
 import { qk } from '@/lib/query/keys';
 import { toast } from '@/components/ui/toaster';
 
@@ -23,16 +25,18 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
   const { sessionId } = params;
   const qc = useQueryClient();
   const [q, setQ] = useState('');
-  const debounced = useDebounced(q, 300);
+  const debounced = useDebounced(q, 800);
+  const normalizedQuery = debounced.trim();
 
   const search = useQuery({
-    queryKey: qk.search(sessionId, debounced),
-    queryFn: ({ signal }) => searchTracks(sessionId, debounced, signal),
-    enabled: debounced.trim().length >= 2,
+    queryKey: qk.search(sessionId, normalizedQuery),
+    queryFn: ({ signal }) => searchTracks(sessionId, normalizedQuery, signal),
+    enabled: normalizedQuery.length >= 3,
+    retry: false,
   });
 
   const add = useMutation({
-    mutationFn: (spotifyTrackId: string) => addQueueEntry(sessionId, { spotifyTrackId }),
+    mutationFn: (track: TrackDto) => addQueueEntry(sessionId, toAddQueueEntryBody(track)),
     onSuccess: () => {
       toast({ title: 'Added to queue', tone: 'success' });
       qc.invalidateQueries({ queryKey: qk.queue(sessionId) });
@@ -61,21 +65,19 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
         />
       </div>
 
-      {debounced.trim().length < 2 ? (
+      {normalizedQuery.length < 3 ? (
         <Card>
           <CardHeader>
             <CardTitle>Start typing</CardTitle>
             <CardDescription>
-              We search Spotify in real time. Two characters is enough to start.
+              Type at least three characters to search Spotify.
             </CardDescription>
           </CardHeader>
         </Card>
       ) : search.isLoading ? (
         <Loader2 className="mx-auto mt-6 h-5 w-5 animate-spin text-ink-muted" />
       ) : search.isError ? (
-        <p className="text-sm text-danger">
-          {search.error instanceof Error ? search.error.message : 'Search failed.'}
-        </p>
+        <SearchError error={search.error} />
       ) : results.length === 0 ? (
         <p className="text-sm text-ink-muted">Nothing matches that yet.</p>
       ) : (
@@ -84,8 +86,8 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
             <TrackResultCard
               key={track.spotifyTrackId}
               track={track}
-              busy={add.isPending && add.variables === track.spotifyTrackId}
-              onAdd={() => add.mutate(track.spotifyTrackId)}
+              busy={add.isPending && add.variables?.spotifyTrackId === track.spotifyTrackId}
+              onAdd={() => add.mutate(track)}
             />
           ))}
         </ul>
@@ -93,3 +95,44 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
     </div>
   );
 }
+
+const SearchError = ({ error }: { error: Error | null }) => {
+  const code = error instanceof ApiError ? error.code : 'UNKNOWN';
+  const retryAfterSec =
+    error instanceof ApiError && typeof error.details?.retryAfterSec === 'number'
+      ? error.details.retryAfterSec
+      : null;
+  return (
+    <p className="text-sm text-danger">
+      {code} — {error?.message ?? 'Search failed.'}
+      {retryAfterSec ? ` Try again in ${formatRetryAfter(retryAfterSec)}.` : ''}
+    </p>
+  );
+};
+
+const toAddQueueEntryBody = (track: TrackDto): AddQueueEntryBody => ({
+  id: track.spotifyTrackId,
+  uri: track.spotifyUri,
+  name: track.title,
+  artists: [{ name: track.artist }],
+  ...(track.album || track.artworkUrl
+    ? {
+        album: {
+          ...(track.album ? { name: track.album } : {}),
+          ...(track.artworkUrl ? { images: [{ url: track.artworkUrl }] } : {}),
+        },
+      }
+    : {}),
+  duration_ms: track.durationMs,
+  explicit: track.explicit,
+  is_local: false,
+});
+
+const formatRetryAfter = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+};
