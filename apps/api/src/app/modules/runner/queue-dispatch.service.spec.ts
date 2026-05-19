@@ -210,7 +210,7 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
   });
 
   it('skips when the Spotify buffer is already full', async () => {
-    const { service, adapter, entries } = makeService({ buffered: 1 });
+    const { service, adapter, entries } = makeService({ buffered: 3 });
     const result = await service.dispatchNextForSession(SESSION_ID);
     expect(result.outcome).toBe('buffer_full');
     expect(adapter.enqueueTrack).not.toHaveBeenCalled();

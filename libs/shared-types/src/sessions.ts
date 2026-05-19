@@ -41,7 +41,7 @@ export interface SessionSettings {
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   lockSize: 2,
   lockDurationSeconds: 90,
-  spotifyQueueDepthTarget: 1,
+  spotifyQueueDepthTarget: 3,
   initialBoostTokens: 3,
   initialChallengeTokens: 1,
   allowExplicitTracks: true,

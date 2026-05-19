@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Home, Loader2, ListMusic, LogOut, Search, Sparkles, WalletCards } from 'lucide-react';
 import { useGuestAuth } from '@/lib/auth/hooks';
 import { PartySocketProvider } from '@/lib/realtime/PartySocketProvider';
+import { ApiError } from '@/lib/api/client';
 import { getGuestWallet } from '@/lib/api/endpoints';
 import { qk } from '@/lib/query/keys';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,13 @@ export default function PartyLayout({ children, params }: PartyLayoutProps) {
     clear();
     router.replace('/');
   };
+  const walletError = wallet.error;
+  const recoveryMessage =
+    walletError instanceof ApiError && walletError.code === 'UNAUTHORIZED'
+      ? 'Your guest pass expired. Rejoin the party to keep voting and adding songs.'
+      : walletError instanceof ApiError && walletError.code === 'SESSION_EXPIRED'
+        ? 'This party has ended or expired.'
+        : null;
 
   return (
     <PartySocketProvider token={token} sessionId={sessionId} role="guest">
@@ -79,7 +87,17 @@ export default function PartyLayout({ children, params }: PartyLayoutProps) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-28 pt-4 sm:pb-10">{children}</main>
+        <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 pb-28 pt-4 sm:pb-10">
+          {recoveryMessage ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-ink">
+              <span>{recoveryMessage}</span>
+              <Button asChild size="sm" variant="secondary">
+                <Link href="/join">Rejoin</Link>
+              </Button>
+            </div>
+          ) : null}
+          {children}
+        </main>
 
         <nav
           className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-3xl items-stretch border-t border-border bg-background/95 backdrop-blur sm:hidden"

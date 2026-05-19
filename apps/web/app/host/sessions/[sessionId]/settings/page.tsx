@@ -34,6 +34,7 @@ export default function HostSettingsPage({ params }: { params: { sessionId: stri
   });
 
   const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormValues>();
+  const queueDepth = watch('spotifyQueueDepthTarget');
   const allowExplicit = watch('allowExplicitTracks');
   const proximityRequired = watch('proximityRequired');
 
@@ -121,10 +122,19 @@ export default function HostSettingsPage({ params }: { params: { sessionId: stri
             <Field label="Spotify queue depth">
               <Input
                 type="number"
-                min={0}
+                min={1}
                 max={5}
                 {...register('spotifyQueueDepthTarget')}
               />
+              <span className="text-xs text-ink-subtle">
+                Upcoming songs FairPlay keeps ready in Spotify. 3 is recommended for parties.
+              </span>
+              {Number(queueDepth) === 1 ? (
+                <span className="text-xs text-warning">
+                  Depth 1 is tight: FairPlay keeps one song ahead, but gaps can happen if the queue
+                  runs empty.
+                </span>
+              ) : null}
             </Field>
           </CardContent>
         </Card>

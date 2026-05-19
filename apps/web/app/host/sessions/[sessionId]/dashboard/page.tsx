@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  getSession,
   hostListQueue,
   hostPinEntry,
   hostUnpinEntry,
@@ -21,6 +22,11 @@ export default function HostDashboardPage({ params }: { params: { sessionId: str
   const { sessionId } = params;
   const qc = useQueryClient();
   const { nowPlaying, runnerStatus } = usePartySocket();
+
+  const session = useQuery({
+    queryKey: qk.session(sessionId),
+    queryFn: () => getSession(sessionId),
+  });
 
   const queue = useQuery({
     queryKey: qk.queue(sessionId),
@@ -51,8 +57,25 @@ export default function HostDashboardPage({ params }: { params: { sessionId: str
   });
 
   const activeEntry = queue.data?.find((e) => e.id === nowPlaying?.entryId) ?? null;
-  const pending = queue.data?.filter((e) => e.status === 'PENDING' || e.status === 'LOCKED') ?? [];
-  const lockedCount = pending.filter((e) => e.status === 'LOCKED').length;
+  const activeQueue = (queue.data ?? [])
+    .filter(
+      (entry) =>
+        entry.status === 'PENDING' ||
+        entry.status === 'LOCKED' ||
+        entry.status === 'QUEUED_TO_SPOTIFY' ||
+        entry.status === 'PLAYING',
+    )
+    .sort((a, b) => {
+      const statusDelta = statusRank(a.status) - statusRank(b.status);
+      return statusDelta === 0 ? b.score - a.score : statusDelta;
+    });
+  const queueCounts = {
+    pending: activeQueue.filter((entry) => entry.status === 'PENDING').length,
+    locked: activeQueue.filter((entry) => entry.status === 'LOCKED').length,
+    queued: activeQueue.filter((entry) => entry.status === 'QUEUED_TO_SPOTIFY').length,
+    playing: activeQueue.filter((entry) => entry.status === 'PLAYING').length,
+  };
+  const queueDepthTarget = session.data?.settings.spotifyQueueDepthTarget ?? 3;
 
   return (
     <div className="flex flex-col gap-6">
@@ -68,12 +91,20 @@ export default function HostDashboardPage({ params }: { params: { sessionId: str
 
       <NowPlayingCard nowPlaying={nowPlaying} currentEntry={activeEntry} />
 
+      <div className="grid gap-2 sm:grid-cols-5" aria-label="Queue pipeline">
+        <QueueMetric label="Voting" value={queueCounts.pending} />
+        <QueueMetric label="Challenge" value={queueCounts.locked} />
+        <QueueMetric label="Spotify" value={`${queueCounts.queued}/${queueDepthTarget}`} />
+        <QueueMetric label="Playing" value={queueCounts.playing} />
+        <QueueMetric label="Depth" value={queueDepthTarget} />
+      </div>
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <div>
             <CardTitle>Queue</CardTitle>
             <CardDescription>
-              {pending.length} active · {lockedCount} locked
+              Spotify shows songs after they leave the challenge window. Depth is the number kept ahead.
             </CardDescription>
           </div>
         </CardHeader>
@@ -84,7 +115,7 @@ export default function HostDashboardPage({ params }: { params: { sessionId: str
             <p className="text-sm text-danger">
               Queue read failed: {queue.error instanceof Error ? queue.error.message : 'unknown error'}.
             </p>
-          ) : pending.length === 0 ? (
+          ) : activeQueue.length === 0 ? (
             <p className="text-sm text-ink-muted">
               No active queue items yet. Guest-added tracks will appear here in
               real time.
@@ -92,7 +123,7 @@ export default function HostDashboardPage({ params }: { params: { sessionId: str
           ) : (
             <ol className="flex flex-col gap-3">
               <AnimatePresence initial={false}>
-                {pending.map((entry, idx) => (
+                {activeQueue.map((entry, idx) => (
                   <QueueCard
                     key={entry.id}
                     rank={idx + 1}
@@ -118,3 +149,19 @@ export default function HostDashboardPage({ params }: { params: { sessionId: str
     </div>
   );
 }
+
+const statusOrder: Record<string, number> = {
+  PLAYING: 0,
+  QUEUED_TO_SPOTIFY: 1,
+  LOCKED: 2,
+  PENDING: 3,
+};
+
+const statusRank = (status: string): number => statusOrder[status] ?? 99;
+
+const QueueMetric = ({ label, value }: { label: string; value: number | string }) => (
+  <div className="rounded-xl border border-border bg-surface px-3 py-2">
+    <div className="text-xs uppercase tracking-wide text-ink-subtle">{label}</div>
+    <div className="text-lg font-black text-ink">{value}</div>
+  </div>
+);

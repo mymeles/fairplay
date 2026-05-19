@@ -14,12 +14,14 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useHostAuth } from '@/lib/auth/hooks';
+import { ApiError } from '@/lib/api/client';
 import { getSession, hostLogout } from '@/lib/api/endpoints';
 import { qk } from '@/lib/query/keys';
 import { PartySocketProvider } from '@/lib/realtime/PartySocketProvider';
 import { ConnectionPill } from '@/components/domain/connection-pill';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { rememberHostSession } from '@/lib/session/recent-host-sessions';
 
 interface HostSessionLayoutProps {
   children: React.ReactNode;
@@ -53,6 +55,12 @@ export default function HostSessionLayout({ children, params }: HostSessionLayou
     refetchInterval: 60_000,
   });
 
+  useEffect(() => {
+    if (sessionQuery.data) {
+      rememberHostSession(sessionQuery.data);
+    }
+  }, [sessionQuery.data]);
+
   if (!ready || !token) {
     return (
       <main className="flex min-h-screen items-center justify-center text-ink-muted">
@@ -72,6 +80,13 @@ export default function HostSessionLayout({ children, params }: HostSessionLayou
   };
 
   const session = sessionQuery.data;
+  const sessionError = sessionQuery.error;
+  const recoveryMessage =
+    sessionError instanceof ApiError && sessionError.code === 'UNAUTHORIZED'
+      ? 'Your host login expired. Reconnect Spotify to resume parties saved in this browser.'
+      : sessionError instanceof ApiError && sessionError.code === 'SESSION_EXPIRED'
+        ? 'This party has expired. Create a new session to keep hosting.'
+        : null;
 
   return (
     <PartySocketProvider token={token} sessionId={sessionId} role="host">
@@ -119,7 +134,17 @@ export default function HostSessionLayout({ children, params }: HostSessionLayou
             })}
           </nav>
         </header>
-        <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</div>
+        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
+          {recoveryMessage ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-ink">
+              <span>{recoveryMessage}</span>
+              <Button asChild size="sm" variant="secondary">
+                <Link href="/host/login">Reconnect</Link>
+              </Button>
+            </div>
+          ) : null}
+          {children}
+        </div>
       </div>
     </PartySocketProvider>
   );

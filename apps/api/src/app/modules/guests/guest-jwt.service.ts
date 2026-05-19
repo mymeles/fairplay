@@ -5,7 +5,7 @@ import { AppConfigService } from '../config/app-config.service';
 
 const GUEST_TOKEN_AUDIENCE = 'fairplay:guest';
 const GUEST_TOKEN_ISSUER = 'fairplay:api';
-const GUEST_TOKEN_TTL_SECONDS = 60 * 60 * 12; // 12 hours
+const GUEST_TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 export interface GuestJwtClaims extends JwtPayload {
   sub: string;             // guestId

@@ -12,7 +12,7 @@ import { JoinCodeService } from './join-code.service';
 import { QrTokenService } from './qr-token.service';
 import { PartySessionRecord, SessionRepository } from './session.repository';
 
-const DEFAULT_TTL_HOURS = 12;
+const DEFAULT_TTL_HOURS = 24;
 
 export interface CreateSessionInputExtras {
   settingsOverride?: Partial<SessionSettings>;

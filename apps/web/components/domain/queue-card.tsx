@@ -8,6 +8,8 @@ import {
   Pin,
   Rocket,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   X,
 } from 'lucide-react';
@@ -33,13 +35,20 @@ interface QueueCardProps {
 }
 
 const statusLabel: Record<QueueEntryStatus, string> = {
-  PENDING: 'Pending',
-  LOCKED: 'Locked',
-  QUEUED_TO_SPOTIFY: 'Up next on Spotify',
-  PLAYING: 'Now playing',
+  PENDING: 'Voting open',
+  LOCKED: 'Locked for challenge',
+  QUEUED_TO_SPOTIFY: 'Queued in Spotify',
+  PLAYING: 'Playing now',
   PLAYED: 'Played',
   REMOVED: 'Removed',
   VETOED: 'Vetoed',
+};
+
+const statusHelp: Partial<Record<QueueEntryStatus, string>> = {
+  PENDING: 'Votes and boosts can still move this track.',
+  LOCKED: 'Final window: a challenge returns this track to voting.',
+  QUEUED_TO_SPOTIFY: 'Already sent to Spotify; voting is closed.',
+  PLAYING: 'Matched to current Spotify playback.',
 };
 
 const statusTone: Record<QueueEntryStatus, 'neutral' | 'accent' | 'success' | 'warning' | 'danger'> = {
@@ -67,7 +76,7 @@ export const QueueCard = ({
   onUnpin,
   onVeto,
 }: QueueCardProps) => {
-  const isLocked = entry.status === 'LOCKED' || entry.status === 'QUEUED_TO_SPOTIFY';
+  const isLocked = entry.status === 'LOCKED';
   const canVote = role === 'guest' && entry.status === 'PENDING';
   const canBoost = role === 'guest' && entry.status === 'PENDING';
   const canChallenge = role === 'guest' && entry.status === 'LOCKED';
@@ -129,10 +138,19 @@ export const QueueCard = ({
             <Sparkles className="h-3 w-3 text-accent-pink" aria-hidden />
             Score {entry.score.toFixed(1)}
           </span>
-          <span>👍 {entry.upvotes}</span>
-          <span>👎 {entry.downvotes}</span>
+          <span className="inline-flex items-center gap-1">
+            <ThumbsUp className="h-3 w-3" aria-hidden />
+            {entry.upvotes}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <ThumbsDown className="h-3 w-3" aria-hidden />
+            {entry.downvotes}
+          </span>
           {entry.boostCredits > 0 ? <span>🚀 {entry.boostCredits}</span> : null}
         </div>
+        {statusHelp[entry.status] ? (
+          <div className="mt-1 text-xs text-ink-subtle">{statusHelp[entry.status]}</div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap">

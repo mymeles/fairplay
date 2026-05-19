@@ -310,12 +310,11 @@ export class QueueEntryRepository {
     sessionId: string,
     tx: PrismaTxn = this.prisma,
   ): Promise<number> {
-    // M12 — tracks the runner has appended to Spotify's queue but that
-    // haven't started playing yet. M13 will move QUEUED_TO_SPOTIFY → PLAYING
-    // when now-playing sync sees the track. Together these are the buffer
-    // depth the runner must not exceed.
+    // Queue depth means songs waiting ahead in Spotify, not the one currently
+    // playing. Counting PLAYING here made a target of 1 leave no next song
+    // preloaded, which created audible gaps at track boundaries.
     return tx.queueEntry.count({
-      where: { sessionId, status: { in: ['QUEUED_TO_SPOTIFY', 'PLAYING'] } },
+      where: { sessionId, status: 'QUEUED_TO_SPOTIFY' },
     });
   }
 

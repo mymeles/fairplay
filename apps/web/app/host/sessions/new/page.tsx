@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Loader2 } from 'lucide-react';
@@ -12,6 +13,11 @@ import { Switch } from '@/components/ui/switch';
 import { createSession } from '@/lib/api/endpoints';
 import { useHostAuth } from '@/lib/auth/hooks';
 import { toast } from '@/components/ui/toaster';
+import {
+  readRecentHostSessions,
+  rememberHostSession,
+  type RecentHostSession,
+} from '@/lib/session/recent-host-sessions';
 
 interface FormValues {
   lockSize: number;
@@ -28,7 +34,7 @@ interface FormValues {
 const defaults: FormValues = {
   lockSize: 2,
   lockDurationSeconds: 90,
-  spotifyQueueDepthTarget: 1,
+  spotifyQueueDepthTarget: 3,
   initialBoostTokens: 3,
   initialChallengeTokens: 1,
   duplicateCooldownSeconds: 900,
@@ -40,12 +46,17 @@ const defaults: FormValues = {
 export default function NewSessionPage() {
   const router = useRouter();
   const { token, ready } = useHostAuth();
+  const [recentSessions, setRecentSessions] = useState<RecentHostSession[]>([]);
 
   useEffect(() => {
     if (ready && !token && typeof window !== 'undefined') {
       window.location.replace('/host/login');
     }
   }, [ready, token]);
+
+  useEffect(() => {
+    setRecentSessions(readRecentHostSessions());
+  }, []);
 
   const {
     register,
@@ -55,6 +66,7 @@ export default function NewSessionPage() {
     formState: { isSubmitting },
   } = useForm<FormValues>({ defaultValues: defaults });
 
+  const queueDepth = watch('spotifyQueueDepthTarget');
   const allowExplicit = watch('allowExplicitTracks');
   const proximityRequired = watch('proximityRequired');
 
@@ -78,6 +90,7 @@ export default function NewSessionPage() {
         description: `Join code ${result.joinCode}`,
         tone: 'success',
       });
+      rememberHostSession(result.session);
       router.push(`/host/sessions/${result.session.id}/qr`);
     } catch (err) {
       toast({
@@ -102,9 +115,32 @@ export default function NewSessionPage() {
         <span className="text-xs uppercase tracking-[0.3em] text-ink-muted">Step 1 of 3</span>
         <h1 className="text-3xl font-bold">Configure your party</h1>
         <p className="text-sm text-ink-muted">
-          You can change these later from the session settings.
+          Sessions are saved for 24 hours. Use a recent session when you are resuming the same party.
         </p>
       </header>
+
+      {recentSessions.length ? (
+        <section className="grid gap-2" aria-label="Recent sessions">
+          {recentSessions.map((session) => (
+            <div
+              key={session.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised px-4 py-3"
+            >
+              <div>
+                <div className="text-sm font-semibold text-ink">
+                  Continue code {session.joinCode}
+                </div>
+                <div className="text-xs text-ink-muted">
+                  {session.status.toLowerCase()} · expires {formatExpiry(session.expiresAt)}
+                </div>
+              </div>
+              <Button asChild size="sm" variant="secondary">
+                <Link href={`/host/sessions/${session.id}/dashboard`}>Resume</Link>
+              </Button>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <Card>
@@ -122,10 +158,18 @@ export default function NewSessionPage() {
             <Field label="Spotify queue depth">
               <Input
                 type="number"
-                min={0}
+                min={1}
                 max={5}
                 {...register('spotifyQueueDepthTarget')}
               />
+              <span className="text-xs text-ink-subtle">
+                Songs kept ahead in Spotify. 2-3 is smoother for real parties.
+              </span>
+              {Number(queueDepth) === 1 ? (
+                <span className="text-xs text-warning">
+                  Depth 1 keeps one upcoming song ready. Use 2-3 if guests are slow to add tracks.
+                </span>
+              ) : null}
             </Field>
           </CardContent>
         </Card>
@@ -212,6 +256,16 @@ const Field = ({
     {hint ? <span className="text-xs text-ink-subtle">{hint}</span> : null}
   </div>
 );
+
+const formatExpiry = (expiresAt: string): string => {
+  const expires = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expires)) return 'soon';
+  const minutes = Math.max(0, Math.round((expires - Date.now()) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+};
 
 const ToggleRow = ({
   label,

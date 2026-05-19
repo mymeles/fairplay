@@ -5,7 +5,7 @@ import { AppConfigService } from '../config/app-config.service';
 
 const HOST_TOKEN_AUDIENCE = 'fairplay:host';
 const HOST_TOKEN_ISSUER = 'fairplay:api';
-const HOST_TOKEN_TTL_SECONDS = 60 * 60 * 12; // 12 hours
+const HOST_TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 export interface HostJwtClaims extends JwtPayload {
   sub: string;

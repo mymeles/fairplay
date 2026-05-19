@@ -132,8 +132,20 @@ export default function PartyQueuePage({ params }: { params: { sessionId: string
         e.status === 'QUEUED_TO_SPOTIFY' ||
         e.status === 'PLAYING',
     );
-    return active.sort((a, b) => b.score - a.score);
+    return active.sort((a, b) => {
+      const statusDelta = statusOrder[a.status] - statusOrder[b.status];
+      return statusDelta === 0 ? b.score - a.score : statusDelta;
+    });
   }, [queue.data]);
+  const queueCounts = useMemo(
+    () => ({
+      pending: sorted.filter((entry) => entry.status === 'PENDING').length,
+      locked: sorted.filter((entry) => entry.status === 'LOCKED').length,
+      queued: sorted.filter((entry) => entry.status === 'QUEUED_TO_SPOTIFY').length,
+      playing: sorted.filter((entry) => entry.status === 'PLAYING').length,
+    }),
+    [sorted],
+  );
 
   if (queue.isLoading) {
     return <Loader2 className="mx-auto mt-10 h-5 w-5 animate-spin text-ink-muted" />;
@@ -144,9 +156,16 @@ export default function PartyQueuePage({ params }: { params: { sessionId: string
       <header>
         <h1 className="text-2xl font-bold">Queue</h1>
         <p className="text-sm text-ink-muted">
-          Vote up the bangers, vote down the dud takes.
+          Pending tracks can be voted or boosted. Locked tracks can be challenged before Spotify gets them.
         </p>
       </header>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Queue status">
+        <QueueStat label="Voting" value={queueCounts.pending} />
+        <QueueStat label="Challenge" value={queueCounts.locked} />
+        <QueueStat label="In Spotify" value={queueCounts.queued} />
+        <QueueStat label="Playing" value={queueCounts.playing} />
+      </div>
 
       {sorted.length === 0 ? (
         <Card>
@@ -186,3 +205,20 @@ export default function PartyQueuePage({ params }: { params: { sessionId: string
     </div>
   );
 }
+
+const statusOrder: Record<QueueEntryDto['status'], number> = {
+  PLAYING: 0,
+  QUEUED_TO_SPOTIFY: 1,
+  LOCKED: 2,
+  PENDING: 3,
+  PLAYED: 4,
+  REMOVED: 5,
+  VETOED: 6,
+};
+
+const QueueStat = ({ label, value }: { label: string; value: number }) => (
+  <div className="rounded-xl border border-border bg-surface px-3 py-2">
+    <div className="text-xs uppercase tracking-wide text-ink-subtle">{label}</div>
+    <div className="text-lg font-black text-ink">{value}</div>
+  </div>
+);

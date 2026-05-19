@@ -17,7 +17,7 @@ import {
 class SessionSettingsOverrideDto {
   @IsOptional() @IsInt() @Min(1) @Max(10) lockSize?: number;
   @IsOptional() @IsInt() @Min(15) @Max(600) lockDurationSeconds?: number;
-  @IsOptional() @IsInt() @Min(0) @Max(5) spotifyQueueDepthTarget?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(5) spotifyQueueDepthTarget?: number;
   @IsOptional() @IsInt() @Min(0) @Max(50) initialBoostTokens?: number;
   @IsOptional() @IsInt() @Min(0) @Max(50) initialChallengeTokens?: number;
   @IsOptional() @IsBoolean() allowExplicitTracks?: boolean;

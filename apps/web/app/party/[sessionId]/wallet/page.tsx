@@ -48,12 +48,12 @@ export default function WalletPage({ params }: { params: { sessionId: string } }
         </CardHeader>
         <CardContent className="flex flex-col gap-3 text-sm text-ink-muted">
           <p>
-            <strong className="text-ink">Boost</strong> pushes one of your favorite tracks toward
-            the lock window. Use one when a vibe needs to win.
+            <strong className="text-ink">Boost</strong> adds score to a pending track so it moves
+            closer to the lock window.
           </p>
           <p>
-            <strong className="text-ink">Challenge</strong> contests a locked track. If you and
-            other guests downvote enough, it unlocks before it plays.
+            <strong className="text-ink">Challenge</strong> spends one token to unlock a locked
+            track and return it to voting before FairPlay sends it to Spotify.
           </p>
           {lastTokenUpdate ? (
             <p className="rounded-xl border border-border bg-surface-raised p-3 text-xs">
