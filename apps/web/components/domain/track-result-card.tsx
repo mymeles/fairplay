@@ -10,9 +10,15 @@ interface TrackResultCardProps {
   track: TrackDto;
   onAdd: () => void;
   busy?: boolean;
+  addLabel?: string;
 }
 
-export const TrackResultCard = ({ track, onAdd, busy }: TrackResultCardProps) => (
+export const TrackResultCard = ({
+  track,
+  onAdd,
+  busy,
+  addLabel = 'Add to queue',
+}: TrackResultCardProps) => (
   <li className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2.5">
     <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gradient-party-soft">
       {track.artworkUrl ? (
@@ -38,7 +44,7 @@ export const TrackResultCard = ({ track, onAdd, busy }: TrackResultCardProps) =>
         {track.album ? ` · ${track.album}` : ''} · {formatDuration(track.durationMs)}
       </div>
     </div>
-    <Button size="icon" variant="primary" onClick={onAdd} disabled={busy} aria-label="Add to queue">
+    <Button size="icon" variant="primary" onClick={onAdd} disabled={busy} aria-label={addLabel}>
       <Plus className="h-5 w-5" />
     </Button>
   </li>

@@ -2,6 +2,7 @@ import type {
   GuestSummary,
   GuestWalletSummary,
   ProximityResult,
+  FallbackTrackDto,
   QueueEntryDto,
   SessionPublicSummary,
   SessionSummary,
@@ -58,6 +59,7 @@ export const hostLogout = () =>
 // ---------------------------------------------------------------------------
 
 export interface CreateSessionBody {
+  name?: string;
   settings?: Partial<{
     lockSize: number;
     lockDurationSeconds: number;
@@ -157,6 +159,36 @@ export const searchTracks = (sessionId: string, q: string, signal?: AbortSignal)
     sessionId,
     signal,
     timeoutMs: 15_000,
+  });
+
+export const hostSearchTracks = (sessionId: string, q: string, signal?: AbortSignal) =>
+  apiFetch<TrackDto[]>({
+    path: `/sessions/${sessionId}/host/search`,
+    query: { q },
+    auth: 'host',
+    signal,
+    timeoutMs: 15_000,
+  });
+
+export const listFallbackTracks = (sessionId: string) =>
+  apiFetch<FallbackTrackDto[]>({
+    path: `/sessions/${sessionId}/fallback-tracks`,
+    auth: 'host',
+  });
+
+export const addFallbackTrack = (sessionId: string, track: TrackDto) =>
+  apiFetch<FallbackTrackDto>({
+    path: `/sessions/${sessionId}/fallback-tracks`,
+    method: 'POST',
+    body: track,
+    auth: 'host',
+  });
+
+export const removeFallbackTrack = (sessionId: string, fallbackTrackId: string) =>
+  apiFetch<void>({
+    path: `/sessions/${sessionId}/fallback-tracks/${fallbackTrackId}`,
+    method: 'DELETE',
+    auth: 'host',
   });
 
 // ---------------------------------------------------------------------------

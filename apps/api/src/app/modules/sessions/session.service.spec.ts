@@ -11,6 +11,7 @@ const SESSION_ID = '11111111-1111-1111-1111-111111111111';
 const baseRecord = (overrides: Partial<PartySessionRecord> = {}): PartySessionRecord => ({
   id: SESSION_ID,
   hostUserId: HOST,
+  name: null,
   joinCode: 'ABCD12',
   qrTokenHash: 'h'.repeat(64),
   status: 'ACTIVE',
@@ -70,6 +71,7 @@ describe('SessionService.createSession', () => {
     expect(repo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         hostUserId: HOST,
+        name: null,
         joinCode: 'ABCD12',
         qrTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
@@ -101,6 +103,16 @@ describe('SessionService.createSession', () => {
           lockSize: DEFAULT_SESSION_SETTINGS.lockSize,
         }),
       }),
+    );
+  });
+
+  it('stores a trimmed session name when provided', async () => {
+    const repo = makeRepo();
+    repo.create.mockResolvedValue(baseRecord({ name: 'Friday house party' }));
+    const svc = new SessionService(repo, makeJoinCodes(), new QrTokenService(), makeUsers());
+    await svc.createSession(HOST, { name: '  Friday house party  ' });
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Friday house party' }),
     );
   });
 
@@ -166,6 +178,7 @@ describe('SessionService.getPublicByCode', () => {
     const svc = new SessionService(repo, makeJoinCodes(), new QrTokenService(), makeUsers());
     const result = await svc.getPublicByCode('ABCD12');
     expect(result.id).toBe(SESSION_ID);
+    expect(result.name).toBeNull();
     expect(result.joinCode).toBe('ABCD12');
     expect(result.status).toBe('ACTIVE');
     expect(result).not.toHaveProperty('settings');

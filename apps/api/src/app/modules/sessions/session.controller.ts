@@ -30,6 +30,7 @@ export class SessionController {
   @UseGuards(HostAuthGuard)
   async create(@Req() req: Request, @Body() body: CreateSessionDto) {
     return this.sessions.createSession(req.hostClaims!.sub, {
+      name: body.name,
       settingsOverride: body.settings,
       venue: body.venue,
       venueWifiHash: body.venueWifiHash,

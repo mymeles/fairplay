@@ -60,6 +60,7 @@ export interface SessionVenue {
 export interface SessionSummary {
   id: SessionId;
   hostUserId: UserId;
+  name: string | null;
   joinCode: string;
   status: SessionStatus;
   selectedSpotifyDeviceId: string | null;
@@ -78,6 +79,7 @@ export interface SessionSummary {
 // qrToken is the join secret).
 export interface SessionPublicSummary {
   id: SessionId;
+  name: string | null;
   joinCode: string;
   status: SessionStatus;
   expiresAt: string;

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FallbackPlaylistModule } from '../fallback-playlist/fallback-playlist.module';
 import { QueueModule } from '../queue/queue.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SessionModule } from '../sessions/session.module';
@@ -18,7 +19,14 @@ import { SpotifyQueueAdapter } from './spotify-queue.adapter';
 // per API process; horizontal scale-out is a separate concern (see the
 // `apps/runner` placeholder + the handoff doc's "next steps" notes).
 @Module({
-  imports: [SessionModule, QueueModule, SpotifyAuthModule, SpotifyPlaybackModule, RealtimeModule],
+  imports: [
+    SessionModule,
+    QueueModule,
+    SpotifyAuthModule,
+    SpotifyPlaybackModule,
+    RealtimeModule,
+    FallbackPlaylistModule,
+  ],
   providers: [
     SpotifyQueueAdapter,
     SpotifyCircuitBreaker,

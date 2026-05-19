@@ -39,6 +39,7 @@ const entry = (overrides: Partial<QueueEntryRecord>): QueueEntryRecord => ({
 const sessionRecord: PartySessionRecord = {
   id: SESSION_ID,
   hostUserId: 'host-1',
+  name: null,
   joinCode: 'ABC123',
   qrTokenHash: 'h'.repeat(64),
   status: 'ACTIVE',

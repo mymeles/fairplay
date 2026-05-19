@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle2, Loader2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ import {
 } from '@/lib/session/recent-host-sessions';
 
 interface FormValues {
+  name: string;
   lockSize: number;
   lockDurationSeconds: number;
   spotifyQueueDepthTarget: number;
@@ -32,6 +33,7 @@ interface FormValues {
 }
 
 const defaults: FormValues = {
+  name: '',
   lockSize: 2,
   lockDurationSeconds: 90,
   spotifyQueueDepthTarget: 3,
@@ -47,6 +49,7 @@ export default function NewSessionPage() {
   const router = useRouter();
   const { token, ready } = useHostAuth();
   const [recentSessions, setRecentSessions] = useState<RecentHostSession[]>([]);
+  const [mode, setMode] = useState<'recommended' | 'custom'>('recommended');
 
   useEffect(() => {
     if (ready && !token && typeof window !== 'undefined') {
@@ -73,17 +76,22 @@ export default function NewSessionPage() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       const result = await createSession({
-        settings: {
-          lockSize: Number(values.lockSize),
-          lockDurationSeconds: Number(values.lockDurationSeconds),
-          spotifyQueueDepthTarget: Number(values.spotifyQueueDepthTarget),
-          initialBoostTokens: Number(values.initialBoostTokens),
-          initialChallengeTokens: Number(values.initialChallengeTokens),
-          duplicateCooldownSeconds: Number(values.duplicateCooldownSeconds),
-          maxSuggestionsPerGuest: Number(values.maxSuggestionsPerGuest),
-          allowExplicitTracks: values.allowExplicitTracks,
-          proximityRequired: values.proximityRequired,
-        },
+        name: values.name.trim() || undefined,
+        ...(mode === 'custom'
+          ? {
+              settings: {
+                lockSize: Number(values.lockSize),
+                lockDurationSeconds: Number(values.lockDurationSeconds),
+                spotifyQueueDepthTarget: Number(values.spotifyQueueDepthTarget),
+                initialBoostTokens: Number(values.initialBoostTokens),
+                initialChallengeTokens: Number(values.initialChallengeTokens),
+                duplicateCooldownSeconds: Number(values.duplicateCooldownSeconds),
+                maxSuggestionsPerGuest: Number(values.maxSuggestionsPerGuest),
+                allowExplicitTracks: values.allowExplicitTracks,
+                proximityRequired: values.proximityRequired,
+              },
+            }
+          : {}),
       });
       toast({
         title: 'Party created',
@@ -128,7 +136,7 @@ export default function NewSessionPage() {
             >
               <div>
                 <div className="text-sm font-semibold text-ink">
-                  Continue code {session.joinCode}
+                  Continue {session.name ?? `code ${session.joinCode}`}
                 </div>
                 <div className="text-xs text-ink-muted">
                   {session.status.toLowerCase()} · expires {formatExpiry(session.expiresAt)}
@@ -143,6 +151,65 @@ export default function NewSessionPage() {
       ) : null}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Party name</CardTitle>
+            <CardDescription>Shown to hosts and guests so sessions are easier to resume.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Field label="Name">
+              <Input
+                maxLength={80}
+                placeholder="Friday house party"
+                {...register('name')}
+              />
+            </Field>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Start mode</CardTitle>
+            <CardDescription>Use the party-safe default or tune every rule.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setMode('recommended')}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
+                mode === 'recommended'
+                  ? 'border-accent-cyan bg-accent-cyan/10 text-ink'
+                  : 'border-border bg-surface-raised text-ink-muted hover:text-ink'
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle2 className="h-4 w-4" /> Recommended
+              </span>
+              <span className="mt-1 block text-xs">
+                2 locked tracks, 90s lock window, Spotify queue depth 3, explicit tracks allowed.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('custom')}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
+                mode === 'custom'
+                  ? 'border-accent-pink bg-accent-pink/10 text-ink'
+                  : 'border-border bg-surface-raised text-ink-muted hover:text-ink'
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <SlidersHorizontal className="h-4 w-4" /> Configure
+              </span>
+              <span className="mt-1 block text-xs">
+                Change lock, token, explicit track, proximity, and anti-spam rules before launch.
+              </span>
+            </button>
+          </CardContent>
+        </Card>
+
+        {mode === 'custom' ? (
+          <>
         <Card>
           <CardHeader>
             <CardTitle>Queue & lock window</CardTitle>
@@ -229,6 +296,8 @@ export default function NewSessionPage() {
             />
           </CardContent>
         </Card>
+          </>
+        ) : null}
 
         <CardFooter className="rounded-2xl border border-border bg-surface px-5 py-4">
           <Button type="submit" disabled={isSubmitting} className="ml-auto">

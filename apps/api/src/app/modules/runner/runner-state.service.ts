@@ -83,6 +83,15 @@ export class RunnerStateService {
     });
   }
 
+  markFallbackActive(sessionId: string): void {
+    this.transition(sessionId, {
+      enabled: true,
+      status: 'ACTIVE',
+      reason: 'started',
+      retryAtMs: null,
+    });
+  }
+
   markIdle(sessionId: string): void {
     const current = this.states.get(sessionId);
     // Avoid noisy idle-then-idle publishes if the runner just keeps ticking

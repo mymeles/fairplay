@@ -12,6 +12,7 @@ import { SessionService } from '../sessions/session.service';
 import { UserRepository } from '../spotify-auth/user.repository';
 import { SpotifyPlaybackAdapter } from '../spotify-playback/spotify-playback.adapter';
 import { SpotifyTokenRefreshService } from '../spotify-playback/spotify-token-refresh.service';
+import { FallbackPlaylistService } from '../fallback-playlist/fallback-playlist.service';
 import { RunnerStateService } from './runner-state.service';
 import { SpotifyCircuitBreaker } from './spotify-circuit-breaker';
 import { SpotifyQueueAdapter } from './spotify-queue.adapter';
@@ -29,6 +30,7 @@ const DISPATCHABLE_STATUSES = new Set(['PENDING', 'LOCKED']);
 
 export type DispatchOutcome =
   | 'dispatched'
+  | 'fallback_dispatched'
   | 'no_pending'
   | 'buffer_full'
   | 'locked'
@@ -62,6 +64,7 @@ export class QueueDispatchService {
     private readonly tokenRefresh: SpotifyTokenRefreshService,
     private readonly spotifyQueue: SpotifyQueueAdapter,
     private readonly spotifyPlayback: SpotifyPlaybackAdapter,
+    private readonly fallbackPlaylist: FallbackPlaylistService,
     private readonly breaker: SpotifyCircuitBreaker,
     private readonly runnerState: RunnerStateService,
     @Optional() private readonly realtime?: RealtimeEventPublisher,
@@ -118,7 +121,10 @@ export class QueueDispatchService {
     // 5. Find the next dispatchable entry. Locked rows are preferred: the
     // lock window is the final guest-visible grace period before Spotify.
     const candidate = await this.pickNextDispatchCandidate(sessionId, now);
-    if (!candidate) {
+    const fallbackCandidate = candidate
+      ? null
+      : await this.fallbackPlaylist.pickNextForRunner(sessionId, now);
+    if (!candidate && !fallbackCandidate) {
       this.runnerState.markIdle(sessionId);
       return { sessionId, outcome: 'no_pending' };
     }
@@ -138,7 +144,54 @@ export class QueueDispatchService {
     try {
       // 7. Re-read the entry inside the lock window so we don't race a
       //    veto / removal that happened between picking and dispatching.
-      const fresh = await this.entries.findByIdWithTrack(candidate.id);
+      if (!candidate && fallbackCandidate) {
+        const accessToken = await this.tokenRefresh.getValidAccessToken(hostUserId);
+        const deviceId = await this.selectedDeviceIdFor(hostUserId, session.selectedSpotifyDeviceId);
+        try {
+          await this.enqueueWithDeviceRecovery(
+            accessToken,
+            fallbackCandidate.track.spotifyUri,
+            deviceId,
+          );
+        } catch (err) {
+          if (err instanceof DomainError && err.code === 'SPOTIFY_AUTH_FAILED') {
+            try {
+              const fresher = await this.tokenRefresh.forceRefresh(hostUserId);
+              await this.enqueueWithDeviceRecovery(
+                fresher,
+                fallbackCandidate.track.spotifyUri,
+                deviceId,
+              );
+            } catch (retryErr) {
+              return this.handleSpotifyError(sessionId, hostUserId, null, retryErr, now);
+            }
+          } else {
+            return this.handleSpotifyError(sessionId, hostUserId, null, err, now);
+          }
+        }
+
+        const queuedAt = new Date();
+        await this.fallbackPlaylist.markQueued(fallbackCandidate.id, queuedAt);
+        this.breaker.recordSuccess(hostUserId);
+        this.runnerState.markFallbackActive(sessionId);
+        this.logger.log(
+          {
+            sessionId,
+            hostUserId,
+            fallbackTrackId: fallbackCandidate.id,
+            trackUri: fallbackCandidate.track.spotifyUri,
+            deviceId,
+          },
+          'Fallback track dispatched to Spotify.',
+        );
+        return {
+          sessionId,
+          outcome: 'fallback_dispatched',
+          trackUri: fallbackCandidate.track.spotifyUri,
+        };
+      }
+
+      const fresh = await this.entries.findByIdWithTrack(candidate!.id);
       if (!fresh || !DISPATCHABLE_STATUSES.has(fresh.status)) {
         // The world moved under us — let the next tick try again.
         this.runnerState.markIdle(sessionId);
@@ -278,7 +331,7 @@ export class QueueDispatchService {
   private handleSpotifyError(
     sessionId: string,
     hostUserId: string,
-    entry: QueueEntryWithTrack,
+    entry: QueueEntryWithTrack | null,
     err: unknown,
     now: Date,
   ): DispatchResult {
@@ -317,7 +370,7 @@ export class QueueDispatchService {
         default: {
           this.breaker.recordFailure(hostUserId, now);
           this.logger.warn(
-            { sessionId, entryId: entry.id, code: err.code },
+            { sessionId, entryId: entry?.id ?? null, code: err.code },
             'Spotify dispatch failed with domain error.',
           );
           return { sessionId, outcome: 'error', errorCode: err.code };
@@ -325,7 +378,7 @@ export class QueueDispatchService {
       }
     }
     this.breaker.recordFailure(hostUserId, now);
-    this.logger.warn({ sessionId, entryId: entry.id, err }, 'Spotify dispatch failed.');
+    this.logger.warn({ sessionId, entryId: entry?.id ?? null, err }, 'Spotify dispatch failed.');
     return {
       sessionId,
       outcome: 'error',

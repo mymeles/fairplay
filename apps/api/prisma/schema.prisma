@@ -25,6 +25,7 @@ model User {
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   spotifyToken SpotifyToken?
+  fallbackTracks SessionFallbackTrack[]
 
   @@index([spotifyUserId])
   @@map("users")
@@ -64,6 +65,7 @@ model PartySession {
   hostUserId               String   @map("host_user_id") @db.Uuid
   joinCode                 String   @map("join_code")
   qrTokenHash              String   @map("qr_token_hash")
+  name                     String?
   status                   String   @default("ACTIVE")
   selectedSpotifyDeviceId  String?  @map("selected_spotify_device_id")
   venueLat                 Decimal? @map("venue_lat") @db.Decimal
@@ -80,6 +82,7 @@ model PartySession {
   tokenLedger  TokenLedger[]
   trackBlacklist  SessionTrackBlacklist[]
   artistBlacklist SessionArtistBlacklist[]
+  fallbackTracks SessionFallbackTrack[]
 
   @@index([hostUserId, status])
   @@index([status, expiresAt])
@@ -155,9 +158,31 @@ model Track {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   queueEntries QueueEntry[]
+  fallbackTracks SessionFallbackTrack[]
 
   @@index([spotifyTrackId])
   @@map("tracks")
+}
+
+model SessionFallbackTrack {
+  id             String   @id @default(uuid()) @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  trackId        String   @map("track_id") @db.Uuid
+  addedByUserId  String   @map("added_by_user_id") @db.Uuid
+  position       Int
+  enabled        Boolean  @default(true)
+  lastQueuedAt   DateTime? @map("last_queued_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session PartySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  track   Track        @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  addedBy User         @relation(fields: [addedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, trackId])
+  @@index([sessionId, position])
+  @@index([sessionId, enabled, lastQueuedAt])
+  @@map("session_fallback_tracks")
 }
 
 model SessionTrackBlacklist {

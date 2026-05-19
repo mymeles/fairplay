@@ -15,6 +15,7 @@ import { PartySessionRecord, SessionRepository } from './session.repository';
 const DEFAULT_TTL_HOURS = 24;
 
 export interface CreateSessionInputExtras {
+  name?: string | null;
   settingsOverride?: Partial<SessionSettings>;
   venue?: SessionVenue;
   venueWifiHash?: string;
@@ -68,6 +69,7 @@ export class SessionService {
 
     const record = await this.sessions.create({
       hostUserId,
+      name: normalizeSessionName(extras.name),
       joinCode,
       qrTokenHash: qr.tokenHash,
       selectedSpotifyDeviceId: selectedDeviceId,
@@ -83,6 +85,7 @@ export class SessionService {
       {
         sessionId: record.id,
         hostUserId,
+        name: record.name,
         joinCode,
         hasVenueGps: extras.venue !== undefined,
         hasVenueWifi: extras.venueWifiHash !== undefined,
@@ -113,6 +116,7 @@ export class SessionService {
     }
     return {
       id: record.id,
+      name: record.name,
       joinCode: record.joinCode,
       status: record.status,
       expiresAt: record.expiresAt.toISOString(),
@@ -175,6 +179,7 @@ export class SessionService {
     return {
       id: record.id,
       hostUserId: record.hostUserId,
+      name: record.name,
       joinCode: record.joinCode,
       status: record.status,
       selectedSpotifyDeviceId: record.selectedSpotifyDeviceId,
@@ -187,3 +192,8 @@ export class SessionService {
     };
   }
 }
+
+const normalizeSessionName = (name: string | null | undefined): string | null => {
+  const trimmed = name?.trim();
+  return trimmed ? trimmed.slice(0, 80) : null;
+};

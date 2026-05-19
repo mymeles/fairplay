@@ -74,7 +74,9 @@ export class RunnerWorker implements OnModuleInit, OnModuleDestroy {
         try {
           const result = await this.dispatch.dispatchNextForSession(sessionId, now);
           results.push(result);
-          if (result.outcome === 'dispatched') dispatched += 1;
+          if (result.outcome === 'dispatched' || result.outcome === 'fallback_dispatched') {
+            dispatched += 1;
+          }
         } catch (err) {
           this.logger.warn({ err, sessionId }, 'Runner session dispatch threw.');
         }

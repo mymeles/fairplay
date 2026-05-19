@@ -11,6 +11,7 @@ import type { SessionService } from '../sessions/session.service';
 import type { UserRepository } from '../spotify-auth/user.repository';
 import type { SpotifyPlaybackAdapter } from '../spotify-playback/spotify-playback.adapter';
 import type { SpotifyTokenRefreshService } from '../spotify-playback/spotify-token-refresh.service';
+import type { FallbackPlaylistService } from '../fallback-playlist/fallback-playlist.service';
 import { QueueDispatchService } from './queue-dispatch.service';
 import { RunnerStateService } from './runner-state.service';
 import { SpotifyCircuitBreaker } from './spotify-circuit-breaker';
@@ -23,6 +24,7 @@ const ENTRY_ID = '44444444-4444-4444-4444-444444444444';
 const sessionRecord = (overrides: Partial<PartySessionRecord> = {}): PartySessionRecord => ({
   id: SESSION_ID,
   hostUserId: HOST_ID,
+  name: null,
   joinCode: 'ABC123',
   qrTokenHash: 'h'.repeat(64),
   status: 'ACTIVE',
@@ -134,6 +136,12 @@ const makePlayback = (): jest.Mocked<SpotifyPlaybackAdapter> =>
     transferPlayback: jest.fn().mockResolvedValue(undefined),
   }) as unknown as jest.Mocked<SpotifyPlaybackAdapter>;
 
+const makeFallback = (): jest.Mocked<FallbackPlaylistService> =>
+  ({
+    pickNextForRunner: jest.fn().mockResolvedValue(null),
+    markQueued: jest.fn(),
+  }) as unknown as jest.Mocked<FallbackPlaylistService>;
+
 const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
   ({
     publishTrackQueuedToSpotify: jest.fn(),
@@ -157,6 +165,7 @@ const makeService = (overrides: {
   const tokenRefresh = makeTokenRefresh();
   const adapter = makeAdapter();
   const playback = makePlayback();
+  const fallback = makeFallback();
   const breaker = new SpotifyCircuitBreaker();
   const realtime = makeRealtime();
   const state = new RunnerStateService(realtime);
@@ -168,6 +177,7 @@ const makeService = (overrides: {
     tokenRefresh,
     adapter,
     playback,
+    fallback,
     breaker,
     state,
     realtime,
@@ -181,6 +191,7 @@ const makeService = (overrides: {
     tokenRefresh,
     adapter,
     playback,
+    fallback,
     breaker,
     state,
     realtime,
@@ -222,6 +233,43 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
     const result = await service.dispatchNextForSession(SESSION_ID);
     expect(result.outcome).toBe('no_pending');
     expect(adapter.enqueueTrack).not.toHaveBeenCalled();
+  });
+
+  it('dispatches one fallback track when the FairPlay queue is empty', async () => {
+    const { service, adapter, fallback } = makeService({ candidate: null });
+    (fallback.pickNextForRunner as jest.Mock).mockResolvedValueOnce({
+      id: '66666666-6666-6666-6666-666666666666',
+      sessionId: SESSION_ID,
+      trackId: 'track-fallback',
+      addedByUserId: HOST_ID,
+      position: 1,
+      enabled: true,
+      lastQueuedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      track: {
+        id: 'track-fallback',
+        spotifyUri: 'spotify:track:FALLBACK',
+        spotifyTrackId: 'FALLBACK',
+        title: 'Fallback',
+        artist: 'Tester',
+        durationMs: 180_000,
+        explicit: false,
+        createdAt: new Date(),
+      },
+    });
+
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('fallback_dispatched');
+    expect(adapter.enqueueTrack).toHaveBeenCalledWith(
+      'access-token',
+      'spotify:track:FALLBACK',
+      'dev-1',
+    );
+    expect(fallback.markQueued).toHaveBeenCalledWith(
+      '66666666-6666-6666-6666-666666666666',
+      expect.any(Date),
+    );
   });
 
   it('dispatches a LOCKED entry before pending entries', async () => {

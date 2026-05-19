@@ -21,6 +21,7 @@ const sha = (s: string): string => createHash('sha256').update(s).digest('hex');
 const sessionRecord = (overrides: Partial<PartySessionRecord> = {}): PartySessionRecord => ({
   id: SESSION_ID,
   hostUserId: 'host',
+  name: null,
   joinCode: 'ABCD12',
   qrTokenHash: 'placeholder',
   status: 'ACTIVE',

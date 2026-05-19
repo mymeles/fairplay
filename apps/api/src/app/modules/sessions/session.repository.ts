@@ -11,6 +11,7 @@ import { PrismaService } from '../database/prisma.service';
 export interface PartySessionRecord {
   id: string;
   hostUserId: string;
+  name: string | null;
   joinCode: string;
   qrTokenHash: string;
   status: SessionStatus;
@@ -27,6 +28,7 @@ export interface PartySessionRecord {
 
 export interface CreateSessionInput {
   hostUserId: string;
+  name: string | null;
   joinCode: string;
   qrTokenHash: string;
   selectedSpotifyDeviceId: string | null;
@@ -41,6 +43,7 @@ export interface CreateSessionInput {
 const toRecord = (row: {
   id: string;
   hostUserId: string;
+  name: string | null;
   joinCode: string;
   qrTokenHash: string;
   status: string;
@@ -56,6 +59,7 @@ const toRecord = (row: {
 }): PartySessionRecord => ({
   id: row.id,
   hostUserId: row.hostUserId,
+  name: row.name,
   joinCode: row.joinCode,
   qrTokenHash: row.qrTokenHash,
   status: row.status as SessionStatus,
@@ -96,6 +100,7 @@ export class SessionRepository {
     const row = await this.prisma.partySession.create({
       data: {
         hostUserId: input.hostUserId,
+        name: input.name,
         joinCode: input.joinCode,
         qrTokenHash: input.qrTokenHash,
         selectedSpotifyDeviceId: input.selectedSpotifyDeviceId,
@@ -146,6 +151,14 @@ export class SessionRepository {
     const row = await this.prisma.partySession.update({
       where: { id: sessionId },
       data: { settingsJson: settings as unknown as Prisma.InputJsonValue },
+    });
+    return toRecord(row);
+  }
+
+  async updateName(sessionId: string, name: string | null): Promise<PartySessionRecord> {
+    const row = await this.prisma.partySession.update({
+      where: { id: sessionId },
+      data: { name },
     });
     return toRecord(row);
   }

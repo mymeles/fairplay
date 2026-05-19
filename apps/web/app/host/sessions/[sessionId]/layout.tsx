@@ -101,7 +101,8 @@ export default function HostSessionLayout({ children, params }: HostSessionLayou
             </Link>
             {session ? (
               <span className="hidden text-xs text-ink-subtle sm:inline">
-                · code <strong className="text-ink">{session.joinCode}</strong>
+                · {session.name ? <strong className="text-ink">{session.name}</strong> : 'code'}{' '}
+                <strong className="text-ink">{session.joinCode}</strong>
               </span>
             ) : null}
             <div className="ml-auto flex items-center gap-2">

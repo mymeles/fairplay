@@ -14,6 +14,7 @@ import {
 import { Request } from 'express';
 import { DomainError } from '@fairplay/shared-utils';
 import { GuestAuthGuard } from '../guests/guest-auth.guard';
+import { HostAuthGuard } from '../spotify-auth/host-auth.guard';
 import { NormalizeSpotifyTrackDto } from './dto/normalize-spotify-track.dto';
 import { TrackSearchQueryDto } from './dto/track-search-query.dto';
 import { TrackSearchService } from './track-search.service';
@@ -31,6 +32,16 @@ export class TrackController {
   ) {
     const guest = this.requireGuestForSession(req, sessionId);
     return this.tracks.search(sessionId, guest.sub, query.q);
+  }
+
+  @Get('sessions/:sessionId/host/search')
+  @UseGuards(HostAuthGuard)
+  async hostSearch(
+    @Req() req: Request,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+    @Query() query: TrackSearchQueryDto,
+  ) {
+    return this.tracks.searchForHost(sessionId, req.hostClaims!.sub, query.q);
   }
 
   @Post('tracks/normalize')

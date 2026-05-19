@@ -5,6 +5,7 @@ const MAX_RECENT_SESSIONS = 5;
 
 export interface RecentHostSession {
   id: string;
+  name?: string | null;
   joinCode: string;
   status: string;
   expiresAt: string;
@@ -34,6 +35,7 @@ const isExpired = (expiresAt: string): boolean => {
 export const rememberHostSession = (session: SessionSummary): RecentHostSession[] => {
   const next: RecentHostSession = {
     id: session.id,
+    name: session.name,
     joinCode: session.joinCode,
     status: session.status,
     expiresAt: session.expiresAt,
@@ -50,6 +52,7 @@ const isRecentHostSession = (value: unknown): value is RecentHostSession => {
   const candidate = value as Partial<Record<keyof RecentHostSession, unknown>>;
   return (
     typeof candidate.id === 'string' &&
+    (candidate.name === null || typeof candidate.name === 'string' || candidate.name === undefined) &&
     typeof candidate.joinCode === 'string' &&
     typeof candidate.status === 'string' &&
     typeof candidate.expiresAt === 'string' &&

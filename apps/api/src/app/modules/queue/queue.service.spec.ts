@@ -41,6 +41,7 @@ const spotifyTrack = (
 const sessionRecord = (overrides: Partial<PartySessionRecord> = {}): PartySessionRecord => ({
   id: SESSION_ID,
   hostUserId: HOST_ID,
+  name: null,
   joinCode: 'ABC123',
   qrTokenHash: 'h'.repeat(64),
   status: 'ACTIVE',

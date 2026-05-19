@@ -36,6 +36,11 @@ class VenueDto {
 
 export class CreateSessionDto {
   @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  name?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => SessionSettingsOverrideDto)
   settings?: SessionSettingsOverrideDto;

@@ -94,6 +94,55 @@ export class TrackSearchService {
     }
   }
 
+  async searchForHost(sessionId: string, hostUserId: string, query: string): Promise<TrackDto[]> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      throw new DomainError('VALIDATION_FAILED', 'Search query cannot be empty.');
+    }
+
+    const session = await this.sessions.getSession(sessionId, hostUserId);
+    const queryHash = hashText(normalizedQuery);
+    const cacheKey = searchCacheKey(
+      sessionId,
+      queryHash,
+      session.settings.allowExplicitTracks,
+    );
+    const cached = await this.readSearchCache(cacheKey);
+    if (cached) {
+      return this.moderation.filterAllowedTracks(sessionId, cached, {
+        allowExplicitTracks: session.settings.allowExplicitTracks,
+      });
+    }
+
+    await this.throwIfSpotifyBackoffActive(hostUserId);
+
+    try {
+      const spotifyTracks = await this.callWithAuthRetry(hostUserId, (token) =>
+        this.spotify.searchTracks(token, normalizedQuery, SPOTIFY_SEARCH_LIMIT),
+      );
+      const normalized = this.normalizer.normalizeMany(spotifyTracks);
+      const filtered = await this.moderation.filterAllowedTracks(sessionId, normalized, {
+        allowExplicitTracks: session.settings.allowExplicitTracks,
+      });
+      await this.writeSearchCache(cacheKey, filtered);
+      this.logger.log(
+        { sessionId, hostUserId, queryHash, resultCount: filtered.length },
+        'Host track search completed.',
+      );
+      return filtered;
+    } catch (err) {
+      if (err instanceof DomainError && err.code === 'SPOTIFY_RATE_LIMITED') {
+        const retryAfterSec = normalizeRetryAfter(err.details.retryAfterSec);
+        await this.storeSpotifyBackoff(hostUserId, retryAfterSec);
+        this.logger.warn(
+          { sessionId, hostUserId, retryAfterSec },
+          'Spotify host search rate limit encountered.',
+        );
+      }
+      throw err;
+    }
+  }
+
   async normalizeTrack(
     sessionId: string,
     guestId: string,

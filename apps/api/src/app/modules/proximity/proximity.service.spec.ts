@@ -9,6 +9,7 @@ const sha = (s: string): string => createHash('sha256').update(s).digest('hex');
 const baseSession = (overrides: Partial<PartySessionRecord> = {}): PartySessionRecord => ({
   id: 'sess-1',
   hostUserId: 'host-1',
+  name: null,
   joinCode: 'ABCD12',
   qrTokenHash: 'h'.repeat(64),
   status: 'ACTIVE',

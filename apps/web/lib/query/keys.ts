@@ -7,6 +7,9 @@ export const qk = {
   wallet: (sessionId: string) => ['session', sessionId, 'wallet'] as const,
   search: (sessionId: string, q: string) =>
     ['session', sessionId, 'search', q] as const,
+  hostSearch: (sessionId: string, q: string) =>
+    ['session', sessionId, 'host-search', q] as const,
+  fallbackTracks: (sessionId: string) => ['session', sessionId, 'fallback-tracks'] as const,
   devices: ['host', 'devices'] as const,
   playbackState: ['host', 'playback-state'] as const,
 };
