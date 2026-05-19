@@ -44,8 +44,10 @@ export class ScoreRebuildService {
     const session = await this.sessions.loadJoinable(entry.sessionId);
     const score = this.scoring.calculate(entry, session.settings);
     const updated = await this.entries.setScore(entryId, score);
-    if (updated.status === PENDING_STATUS) {
+    if (updated.status === PENDING_STATUS && !this.isChallengeHoldActive(updated)) {
       await this.redisQueue.addPending(updated.sessionId, updated.id, updated.score);
+    } else {
+      await this.redisQueue.removeEntry(updated.sessionId, updated.id);
     }
     this.logger.log(
       {
@@ -73,7 +75,7 @@ export class ScoreRebuildService {
       if (Math.abs(newScore - entry.score) > SCORE_WRITE_EPSILON) {
         await this.entries.setScore(entry.id, newScore);
       }
-      if (entry.status === PENDING_STATUS) {
+      if (entry.status === PENDING_STATUS && !this.isChallengeHoldActive(entry, now)) {
         pendingInZset += 1;
       }
     }
@@ -98,7 +100,7 @@ export class ScoreRebuildService {
   async rebuildRedisProjection(sessionId: string): Promise<number> {
     const entries = await this.entries.listActiveBySession(sessionId);
     const pending = entries
-      .filter((entry) => entry.status === PENDING_STATUS)
+      .filter((entry) => entry.status === PENDING_STATUS && !this.isChallengeHoldActive(entry))
       .map((entry) => ({ entryId: entry.id, score: entry.score }));
 
     await this.redisQueue.deletePending(sessionId);
@@ -110,5 +112,9 @@ export class ScoreRebuildService {
     );
 
     return pending.length;
+  }
+
+  private isChallengeHoldActive(entry: QueueEntryRecord, now: Date = new Date()): boolean {
+    return entry.status === PENDING_STATUS && !!entry.lockedUntil && entry.lockedUntil > now;
   }
 }

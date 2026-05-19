@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_SETTINGS } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
+import type { GuestRepository } from '../guests/guest.repository';
 import type { ModerationService } from '../moderation/moderation.service';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { ScoringService } from '../scoring/scoring.service';
@@ -125,6 +126,21 @@ const makeRedisQueue = (): jest.Mocked<RedisQueueRepository> =>
     listPendingIds: jest.fn().mockResolvedValue([]),
   }) as unknown as jest.Mocked<RedisQueueRepository>;
 
+const makeGuests = (): jest.Mocked<GuestRepository> =>
+  ({
+    findById: jest.fn().mockResolvedValue({
+      id: GUEST_ID,
+      sessionId: SESSION_ID,
+      displayName: 'Alice',
+      deviceHash: null,
+      role: 'GUEST',
+      status: 'ACTIVE',
+      joinedAt: new Date('2026-01-01T00:00:00Z'),
+      lastSeenAt: null,
+    }),
+    findDisplayNamesByIds: jest.fn().mockResolvedValue(new Map([[GUEST_ID, 'Alice']])),
+  }) as unknown as jest.Mocked<GuestRepository>;
+
 const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
   ({
     publishQueueUpdated: jest.fn(),
@@ -143,6 +159,7 @@ const makeService = (record: PartySessionRecord = sessionRecord()) => {
   const entries = makeEntries();
   const redisQueue = makeRedisQueue();
   const scoring = new ScoringService();
+  const guests = makeGuests();
   const moderation = makeModeration();
   const realtime = makeRealtime();
   const service = new QueueService(
@@ -152,10 +169,11 @@ const makeService = (record: PartySessionRecord = sessionRecord()) => {
     entries,
     redisQueue,
     scoring,
+    guests,
     moderation,
     realtime,
   );
-  return { service, sessions, tracks, entries, redisQueue, moderation, realtime };
+  return { service, sessions, tracks, entries, redisQueue, guests, moderation, realtime };
 };
 
 describe('QueueService.addTrack', () => {
@@ -287,6 +305,7 @@ describe('QueueService.addTrack', () => {
       entries,
       redisQueue,
       new ScoringService(),
+      makeGuests(),
       makeModeration(),
     );
 
@@ -319,6 +338,7 @@ describe('QueueService.listSession', () => {
 
     expect(result.map((entry) => entry.track.spotifyTrackId)).toEqual(['t1', 't2']);
     expect(result.map((entry) => entry.score)).toEqual([10, 5]);
+    expect(result.map((entry) => entry.addedByGuestDisplayName)).toEqual(['Alice', 'Alice']);
   });
 });
 

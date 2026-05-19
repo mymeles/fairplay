@@ -12,6 +12,8 @@ import { SessionService } from '../sessions/session.service';
 import { TokenLedgerService } from '../tokens/token-ledger.service';
 import type { QueueEntryState } from './lock-window.service';
 
+const CHALLENGE_RELOCK_HOLD_MS = 30_000;
+
 export interface ChallengeLockResult {
   entry: QueueEntryState;
   wallet: GuestWalletSummary;
@@ -43,6 +45,7 @@ export class ChallengeService {
     const entry = await this.loadChallengeableEntry(entryId, guestSessionId);
     await this.sessions.loadJoinable(entry.sessionId);
 
+    const relockHoldUntil = new Date(Date.now() + CHALLENGE_RELOCK_HOLD_MS);
     const wallet = await this.prisma.$transaction(async (tx) => {
       const current = await this.entries.findByIdForUpdate(entryId, tx);
       if (!current) {
@@ -71,7 +74,7 @@ export class ChallengeService {
         },
         tx,
       );
-      await this.entries.unlockEntry(entryId, tx);
+      await this.entries.unlockEntry(entryId, tx, relockHoldUntil);
       return updatedWallet;
     });
 
@@ -80,7 +83,7 @@ export class ChallengeService {
     this.realtime?.publishTrackUnlocked(recalculated.sessionId, {
       entryId: recalculated.id,
       status: 'PENDING',
-      lockedUntil: null,
+      lockedUntil: relockHoldUntil.toISOString(),
       reason: 'challenge',
     });
     this.realtime?.publishQueueUpdated(recalculated.sessionId, {

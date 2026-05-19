@@ -153,7 +153,11 @@ describe('ChallengeService.challengeLock', () => {
       SESSION_ID,
       expect.anything(),
     );
-    expect(entries.unlockEntry).toHaveBeenCalledWith(ENTRY_ID, expect.anything());
+    expect(entries.unlockEntry).toHaveBeenCalledWith(
+      ENTRY_ID,
+      expect.anything(),
+      expect.any(Date),
+    );
     expect(ledger.record).toHaveBeenCalledWith(
       {
         sessionId: SESSION_ID,
@@ -170,7 +174,7 @@ describe('ChallengeService.challengeLock', () => {
     expect(realtime.publishTrackUnlocked).toHaveBeenCalledWith(SESSION_ID, {
       entryId: ENTRY_ID,
       status: 'PENDING',
-      lockedUntil: null,
+      lockedUntil: expect.any(String),
       reason: 'challenge',
     });
     expect(realtime.publishTokenUpdated).toHaveBeenCalledWith(

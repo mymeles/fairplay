@@ -110,6 +110,18 @@ describe('ScoreRebuildService.recalculateEntry', () => {
     expect(redisQueue.addPending).not.toHaveBeenCalled();
   });
 
+  it('does not ZADD a challenged entry during its relock hold', async () => {
+    const e = entry({
+      id: 'e1',
+      status: 'PENDING',
+      lockedUntil: new Date(Date.now() + 30_000),
+    });
+    const { service, redisQueue } = makeService([e]);
+    await service.recalculateEntry('e1');
+    expect(redisQueue.addPending).not.toHaveBeenCalled();
+    expect(redisQueue.removeEntry).toHaveBeenCalledWith(SESSION_ID, 'e1');
+  });
+
   it('404s on an unknown entry', async () => {
     const { service } = makeService([]);
     await expect(service.recalculateEntry('does-not-exist')).rejects.toMatchObject({
@@ -149,7 +161,13 @@ describe('ScoreRebuildService.recalculateSession + rebuildRedisProjection', () =
   it('only PENDING entries land in the ZSET projection', async () => {
     const e1 = entry({ id: 'p', status: 'PENDING', upvotes: 3 });
     const e2 = entry({ id: 'l', status: 'LOCKED', upvotes: 99 });
-    const { service, redisQueue } = makeService([e1, e2]);
+    const e3 = entry({
+      id: 'held',
+      status: 'PENDING',
+      upvotes: 99,
+      lockedUntil: new Date(Date.now() + 30_000),
+    });
+    const { service, redisQueue } = makeService([e1, e2, e3]);
 
     const result = await service.recalculateSession(SESSION_ID);
 

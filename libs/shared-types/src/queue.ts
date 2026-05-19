@@ -15,12 +15,14 @@ export interface QueueEntryDto {
   sessionId: SessionId;
   trackId: TrackId;
   addedByGuestId: GuestId | null;
+  addedByGuestDisplayName: string | null;
   status: QueueEntryStatus;
   upvotes: number;
   downvotes: number;
   boostCredits: number;
   score: number;
   lockedUntil: string | null;
+  challengeHoldUntil: string | null;
   hostPinned: boolean;
   spotifyQueuedAt: string | null;
   playingAt: string | null;

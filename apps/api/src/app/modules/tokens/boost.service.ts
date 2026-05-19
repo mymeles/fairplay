@@ -32,7 +32,7 @@ export interface ApplyBoostResult {
   idempotent: boolean;
 }
 
-const BOOSTABLE_STATUSES = new Set<QueueEntryStatus>(['PENDING', 'LOCKED']);
+const BOOSTABLE_STATUSES = new Set<QueueEntryStatus>(['PENDING']);
 
 @Injectable()
 export class BoostService {

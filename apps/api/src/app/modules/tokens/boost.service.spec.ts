@@ -249,4 +249,14 @@ describe('BoostService.applyBoost', () => {
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it('rejects locked entries because the challenge window owns that state', async () => {
+    const { service, prisma } = makeService(entry({ status: 'LOCKED' }));
+
+    await expect(service.applyBoost(ENTRY_ID, GUEST_ID, SESSION_ID)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      details: { status: 'LOCKED' },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 });

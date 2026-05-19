@@ -77,6 +77,14 @@ export const QueueCard = ({
   onVeto,
 }: QueueCardProps) => {
   const isLocked = entry.status === 'LOCKED';
+  const challengeHoldActive =
+    entry.status === 'PENDING' &&
+    !!entry.challengeHoldUntil &&
+    new Date(entry.challengeHoldUntil).getTime() > Date.now();
+  const visibleStatusLabel = challengeHoldActive ? 'Back to voting' : statusLabel[entry.status];
+  const visibleStatusHelp = challengeHoldActive
+    ? 'Recently challenged; it can be voted on and will not relock immediately.'
+    : statusHelp[entry.status];
   const canVote = role === 'guest' && entry.status === 'PENDING';
   const canBoost = role === 'guest' && entry.status === 'PENDING';
   const canChallenge = role === 'guest' && entry.status === 'LOCKED';
@@ -127,12 +135,17 @@ export const QueueCard = ({
           ) : null}
           <Badge tone={statusTone[entry.status]}>
             {isLocked ? <Lock className="h-3 w-3" aria-hidden /> : null}
-            {statusLabel[entry.status]}
+            {visibleStatusLabel}
           </Badge>
         </div>
         <div className="mt-0.5 truncate text-sm text-ink-muted">
           {entry.track.artist} · {formatDuration(entry.track.durationMs)}
         </div>
+        {entry.addedByGuestDisplayName ? (
+          <div className="mt-0.5 truncate text-xs text-ink-subtle">
+            Added by {entry.addedByGuestDisplayName}
+          </div>
+        ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-subtle">
           <span className="inline-flex items-center gap-1">
             <Sparkles className="h-3 w-3 text-accent-pink" aria-hidden />
@@ -148,8 +161,8 @@ export const QueueCard = ({
           </span>
           {entry.boostCredits > 0 ? <span>🚀 {entry.boostCredits}</span> : null}
         </div>
-        {statusHelp[entry.status] ? (
-          <div className="mt-1 text-xs text-ink-subtle">{statusHelp[entry.status]}</div>
+        {visibleStatusHelp ? (
+          <div className="mt-1 text-xs text-ink-subtle">{visibleStatusHelp}</div>
         ) : null}
       </div>
 

@@ -151,7 +151,12 @@ export class QueueEntryRepository {
   ): Promise<QueueEntryRecord[]> {
     if (entryIds.length === 0) return [];
     const rows = await tx.queueEntry.findMany({
-      where: { sessionId, id: { in: entryIds }, status: 'PENDING' },
+      where: {
+        sessionId,
+        id: { in: entryIds },
+        status: 'PENDING',
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
+      },
     });
     const byId = new Map(rows.map((row) => [row.id, toRecord(row)]));
     return entryIds.flatMap((id) => {
@@ -298,10 +303,14 @@ export class QueueEntryRepository {
     return toRecord(row);
   }
 
-  async unlockEntry(entryId: string, tx: PrismaTxn = this.prisma): Promise<QueueEntryRecord> {
+  async unlockEntry(
+    entryId: string,
+    tx: PrismaTxn = this.prisma,
+    relockHoldUntil: Date | null = null,
+  ): Promise<QueueEntryRecord> {
     const row = await tx.queueEntry.update({
       where: { id: entryId },
-      data: { status: 'PENDING', lockedUntil: null },
+      data: { status: 'PENDING', lockedUntil: relockHoldUntil },
     });
     return toRecord(row);
   }
@@ -405,7 +414,12 @@ export class QueueEntryRepository {
   ): Promise<QueueEntryWithTrack[]> {
     if (entryIds.length === 0) return [];
     const rows = await tx.queueEntry.findMany({
-      where: { sessionId, id: { in: entryIds }, status: 'PENDING' },
+      where: {
+        sessionId,
+        id: { in: entryIds },
+        status: 'PENDING',
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
+      },
       include: { track: true },
     });
     const byId = new Map(rows.map((row) => [row.id, toRecordWithTrack(row)]));

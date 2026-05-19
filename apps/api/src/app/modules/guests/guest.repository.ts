@@ -75,6 +75,15 @@ export class GuestRepository {
     return row ? toRecord(row) : null;
   }
 
+  async findDisplayNamesByIds(guestIds: string[]): Promise<Map<string, string>> {
+    if (guestIds.length === 0) return new Map();
+    const rows = await this.prisma.sessionGuest.findMany({
+      where: { id: { in: guestIds } },
+      select: { id: true, displayName: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.displayName]));
+  }
+
   async touchLastSeen(guestId: string): Promise<void> {
     await this.prisma.sessionGuest.update({
       where: { id: guestId },

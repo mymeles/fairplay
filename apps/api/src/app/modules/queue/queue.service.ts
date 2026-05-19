@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { QueueEntryDto, TrackDto } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
+import { GuestRepository } from '../guests/guest.repository';
 import { ModerationService } from '../moderation/moderation.service';
 import { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { ScoringService } from '../scoring/scoring.service';
@@ -26,6 +27,7 @@ export class QueueService {
     private readonly entries: QueueEntryRepository,
     private readonly redisQueue: RedisQueueRepository,
     private readonly scoring: ScoringService,
+    private readonly guests: GuestRepository,
     private readonly moderation: ModerationService,
     @Optional()
     private readonly realtime?: RealtimeEventPublisher,
@@ -97,25 +99,30 @@ export class QueueService {
       'Queue entry created.',
     );
 
-    return this.toDto(entry, {
-      id: track.id,
-      spotifyUri: track.spotifyUri,
-      spotifyTrackId: track.spotifyTrackId,
-      title: track.title,
-      artist: track.artist,
-      ...(track.album ? { album: track.album } : {}),
-      durationMs: track.durationMs,
-      ...(track.artworkUrl ? { artworkUrl: track.artworkUrl } : {}),
-      explicit: track.explicit,
-      createdAt: track.createdAt,
-    });
+    const guest = await this.guests.findById(guestId);
+    return this.toDto(
+      entry,
+      {
+        id: track.id,
+        spotifyUri: track.spotifyUri,
+        spotifyTrackId: track.spotifyTrackId,
+        title: track.title,
+        artist: track.artist,
+        ...(track.album ? { album: track.album } : {}),
+        durationMs: track.durationMs,
+        ...(track.artworkUrl ? { artworkUrl: track.artworkUrl } : {}),
+        explicit: track.explicit,
+        createdAt: track.createdAt,
+      },
+      guest?.displayName ?? null,
+    );
   }
 
   async listSession(sessionId: string, guestId: string): Promise<QueueEntryDto[]> {
     await this.sessions.loadJoinable(sessionId);
     await this.moderation.assertGuestCanReadQueue(sessionId, guestId);
     const rows = await this.entries.listBySessionWithTrack(sessionId);
-    return rows.map((row) => this.toDtoFromWithTrack(row));
+    return this.toDtosFromWithTrack(rows);
   }
 
   // Host-facing queue read. Verifies session ownership and bypasses guest
@@ -124,7 +131,7 @@ export class QueueService {
   async listSessionForHost(sessionId: string, hostUserId: string): Promise<QueueEntryDto[]> {
     await this.sessions.getSession(sessionId, hostUserId);
     const rows = await this.entries.listBySessionWithTrack(sessionId);
-    return rows.map((row) => this.toDtoFromWithTrack(row));
+    return this.toDtosFromWithTrack(rows);
   }
 
   async removeOwnEntry(entryId: string, guestId: string): Promise<QueueEntryDto> {
@@ -157,7 +164,11 @@ export class QueueService {
       'Queue entry removed by adder.',
     );
 
-    return this.toDto(updated, entry.track);
+    return this.toDto(
+      updated,
+      entry.track,
+      await this.displayNameForGuest(updated.addedByGuestId),
+    );
   }
 
   private async enforceMaxSuggestions(
@@ -194,18 +205,27 @@ export class QueueService {
   private toDto(
     entry: QueueEntryRecord,
     track: TrackDto & { id: string; createdAt: Date },
+    addedByGuestDisplayName: string | null = null,
   ): QueueEntryDto {
     return {
       id: entry.id,
       sessionId: entry.sessionId,
       trackId: entry.trackId,
       addedByGuestId: entry.addedByGuestId,
+      addedByGuestDisplayName,
       status: entry.status,
       upvotes: entry.upvotes,
       downvotes: entry.downvotes,
       boostCredits: entry.boostCredits,
       score: entry.score,
-      lockedUntil: entry.lockedUntil ? entry.lockedUntil.toISOString() : null,
+      lockedUntil:
+        entry.status === 'LOCKED' && entry.lockedUntil
+          ? entry.lockedUntil.toISOString()
+          : null,
+      challengeHoldUntil:
+        entry.status === 'PENDING' && entry.lockedUntil && entry.lockedUntil > new Date()
+          ? entry.lockedUntil.toISOString()
+          : null,
       hostPinned: entry.hostPinned,
       spotifyQueuedAt: entry.spotifyQueuedAt ? entry.spotifyQueuedAt.toISOString() : null,
       playingAt: entry.playingAt ? entry.playingAt.toISOString() : null,
@@ -226,7 +246,22 @@ export class QueueService {
     };
   }
 
-  private toDtoFromWithTrack(row: QueueEntryWithTrack): QueueEntryDto {
-    return this.toDto(row, row.track);
+  private async toDtosFromWithTrack(rows: QueueEntryWithTrack[]): Promise<QueueEntryDto[]> {
+    const guestIds = [
+      ...new Set(rows.flatMap((row) => (row.addedByGuestId ? [row.addedByGuestId] : []))),
+    ];
+    const displayNames = await this.guests.findDisplayNamesByIds(guestIds);
+    return rows.map((row) =>
+      this.toDto(
+        row,
+        row.track,
+        row.addedByGuestId ? displayNames.get(row.addedByGuestId) ?? null : null,
+      ),
+    );
+  }
+
+  private async displayNameForGuest(guestId: string | null): Promise<string | null> {
+    if (!guestId) return null;
+    return (await this.guests.findById(guestId))?.displayName ?? null;
   }
 }
