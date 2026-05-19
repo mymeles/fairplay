@@ -9,6 +9,8 @@ import {
 import { RedisQueueRepository } from '../queue/redis-queue.repository';
 import { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import { SessionService } from '../sessions/session.service';
+import { UserRepository } from '../spotify-auth/user.repository';
+import { SpotifyPlaybackAdapter } from '../spotify-playback/spotify-playback.adapter';
 import { SpotifyTokenRefreshService } from '../spotify-playback/spotify-token-refresh.service';
 import { RunnerStateService } from './runner-state.service';
 import { SpotifyCircuitBreaker } from './spotify-circuit-breaker';
@@ -23,6 +25,7 @@ const DISPATCH_LOCK_TTL_SECONDS = 15;
 // Pacing floor when Spotify is healthy but we don't want to fire repeated
 // 429-bait requests on a tight loop. After a 429 the breaker owns pacing.
 const SOFT_RETRY_AFTER_MS = 2_000;
+const DISPATCHABLE_STATUSES = new Set(['PENDING', 'LOCKED']);
 
 export type DispatchOutcome =
   | 'dispatched'
@@ -53,10 +56,12 @@ export class QueueDispatchService {
 
   constructor(
     private readonly sessions: SessionService,
+    private readonly users: UserRepository,
     private readonly entries: QueueEntryRepository,
     private readonly redisQueue: RedisQueueRepository,
     private readonly tokenRefresh: SpotifyTokenRefreshService,
     private readonly spotifyQueue: SpotifyQueueAdapter,
+    private readonly spotifyPlayback: SpotifyPlaybackAdapter,
     private readonly breaker: SpotifyCircuitBreaker,
     private readonly runnerState: RunnerStateService,
     @Optional() private readonly realtime?: RealtimeEventPublisher,
@@ -110,8 +115,9 @@ export class QueueDispatchService {
       return { sessionId, outcome: 'buffer_full' };
     }
 
-    // 5. Find the highest-ranked PENDING entry via Redis, reconcile with DB.
-    const candidate = await this.pickNextPending(sessionId);
+    // 5. Find the next dispatchable entry. Locked rows are preferred: the
+    // lock window is the final guest-visible grace period before Spotify.
+    const candidate = await this.pickNextDispatchCandidate(sessionId, now);
     if (!candidate) {
       this.runnerState.markIdle(sessionId);
       return { sessionId, outcome: 'no_pending' };
@@ -133,7 +139,7 @@ export class QueueDispatchService {
       // 7. Re-read the entry inside the lock window so we don't race a
       //    veto / removal that happened between picking and dispatching.
       const fresh = await this.entries.findByIdWithTrack(candidate.id);
-      if (!fresh || fresh.status !== 'PENDING') {
+      if (!fresh || !DISPATCHABLE_STATUSES.has(fresh.status)) {
         // The world moved under us — let the next tick try again.
         this.runnerState.markIdle(sessionId);
         return { sessionId, outcome: 'no_pending' };
@@ -141,15 +147,15 @@ export class QueueDispatchService {
 
       // 8. Refresh the host token (with one-shot 401 retry) and call Spotify.
       const accessToken = await this.tokenRefresh.getValidAccessToken(hostUserId);
-      const deviceId = session.selectedSpotifyDeviceId;
+      const deviceId = await this.selectedDeviceIdFor(hostUserId, session.selectedSpotifyDeviceId);
       try {
-        await this.spotifyQueue.enqueueTrack(accessToken, fresh.track.spotifyUri, deviceId);
+        await this.enqueueWithDeviceRecovery(accessToken, fresh.track.spotifyUri, deviceId);
       } catch (err) {
         // 401 — refresh once and retry. Same pattern as SpotifyDeviceService.
         if (err instanceof DomainError && err.code === 'SPOTIFY_AUTH_FAILED') {
           try {
             const fresher = await this.tokenRefresh.forceRefresh(hostUserId);
-            await this.spotifyQueue.enqueueTrack(fresher, fresh.track.spotifyUri, deviceId);
+            await this.enqueueWithDeviceRecovery(fresher, fresh.track.spotifyUri, deviceId);
           } catch (retryErr) {
             return this.handleSpotifyError(sessionId, hostUserId, fresh, retryErr, now);
           }
@@ -163,6 +169,7 @@ export class QueueDispatchService {
       const queuedAt = new Date();
       const updated = await this.entries.markQueuedToSpotify(fresh.id, queuedAt);
       await this.redisQueue.removeEntry(sessionId, updated.id);
+      await this.redisQueue.removeLocked(sessionId, updated.id);
       this.breaker.recordSuccess(hostUserId);
       this.runnerState.markActive(sessionId, updated.id);
 
@@ -208,7 +215,13 @@ export class QueueDispatchService {
     }
   }
 
-  private async pickNextPending(sessionId: string): Promise<QueueEntryWithTrack | null> {
+  private async pickNextDispatchCandidate(
+    sessionId: string,
+    now: Date,
+  ): Promise<QueueEntryWithTrack | null> {
+    const locked = await this.entries.listLockedForDispatchWithTrack(sessionId, 1, now);
+    if (locked[0]) return locked[0];
+
     // Try a few top entries from Redis — sometimes the head was just
     // removed/vetoed and the ZSET hasn't caught up. The repo helper drops
     // entries that aren't actually PENDING in Postgres.
@@ -217,6 +230,49 @@ export class QueueDispatchService {
     if (candidateIds.length === 0) return null;
     const rows = await this.entries.listPendingByIdsWithTrack(sessionId, candidateIds);
     return rows[0] ?? null;
+  }
+
+  private async enqueueWithDeviceRecovery(
+    accessToken: string,
+    trackUri: string,
+    deviceId: string | null,
+  ): Promise<void> {
+    try {
+      await this.spotifyQueue.enqueueTrack(accessToken, trackUri, deviceId);
+      return;
+    } catch (err) {
+      if (!(err instanceof DomainError) || err.code !== 'SPOTIFY_NO_ACTIVE_DEVICE' || !deviceId) {
+        throw err;
+      }
+    }
+
+    try {
+      await this.spotifyPlayback.transferPlayback(accessToken, deviceId, true);
+    } catch (err) {
+      if (err instanceof DomainError && err.code === 'SPOTIFY_DEVICE_NOT_FOUND') {
+        await this.spotifyQueue.enqueueTrack(accessToken, trackUri, null);
+        return;
+      }
+      throw err;
+    }
+
+    try {
+      await this.spotifyQueue.enqueueTrack(accessToken, trackUri, deviceId);
+    } catch (err) {
+      if (err instanceof DomainError && err.code === 'SPOTIFY_DEVICE_NOT_FOUND') {
+        await this.spotifyQueue.enqueueTrack(accessToken, trackUri, null);
+        return;
+      }
+      throw err;
+    }
+  }
+
+  private async selectedDeviceIdFor(
+    hostUserId: string,
+    sessionDeviceId: string | null,
+  ): Promise<string | null> {
+    const user = await this.users.findById(hostUserId);
+    return user?.selectedDeviceId ?? sessionDeviceId;
   }
 
   private handleSpotifyError(
@@ -249,6 +305,11 @@ export class QueueDispatchService {
           return { sessionId, outcome: 'premium_required', errorCode: err.code };
         }
         case 'SPOTIFY_NO_ACTIVE_DEVICE': {
+          this.runnerState.disable(sessionId, 'no_active_device', err.code);
+          this.breaker.forceOpen(hostUserId, 60_000, now);
+          return { sessionId, outcome: 'no_device', errorCode: err.code };
+        }
+        case 'SPOTIFY_DEVICE_NOT_FOUND': {
           this.runnerState.disable(sessionId, 'no_active_device', err.code);
           this.breaker.forceOpen(hostUserId, 60_000, now);
           return { sessionId, outcome: 'no_device', errorCode: err.code };

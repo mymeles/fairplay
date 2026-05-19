@@ -8,6 +8,8 @@ import type { RedisQueueRepository } from '../queue/redis-queue.repository';
 import type { RealtimeEventPublisher } from '../realtime/realtime-event-publisher';
 import type { PartySessionRecord } from '../sessions/session.repository';
 import type { SessionService } from '../sessions/session.service';
+import type { UserRepository } from '../spotify-auth/user.repository';
+import type { SpotifyPlaybackAdapter } from '../spotify-playback/spotify-playback.adapter';
 import type { SpotifyTokenRefreshService } from '../spotify-playback/spotify-token-refresh.service';
 import { QueueDispatchService } from './queue-dispatch.service';
 import { RunnerStateService } from './runner-state.service';
@@ -72,6 +74,17 @@ const makeSessions = (record = sessionRecord()): jest.Mocked<SessionService> =>
     loadJoinable: jest.fn().mockResolvedValue(record),
   }) as unknown as jest.Mocked<SessionService>;
 
+const makeUsers = (): jest.Mocked<UserRepository> =>
+  ({
+    findById: jest.fn().mockResolvedValue({
+      id: HOST_ID,
+      email: null,
+      displayName: null,
+      spotifyUserId: 'spotify-host',
+      selectedDeviceId: 'dev-1',
+    }),
+  }) as unknown as jest.Mocked<UserRepository>;
+
 const makeEntries = (
   candidate: QueueEntryWithTrack | null = entryWithTrack(),
   buffered = 0,
@@ -79,6 +92,7 @@ const makeEntries = (
   const finder = jest.fn().mockResolvedValue(candidate);
   return {
     countSpotifyBufferedBySession: jest.fn().mockResolvedValue(buffered),
+    listLockedForDispatchWithTrack: jest.fn().mockResolvedValue([]),
     listPendingByIdsWithTrack: jest
       .fn()
       .mockResolvedValue(candidate ? [candidate] : []),
@@ -100,6 +114,7 @@ const makeRedis = (lockGranted = true): jest.Mocked<RedisQueueRepository> =>
     acquireDispatchLock: jest.fn().mockResolvedValue(lockGranted),
     releaseDispatchLock: jest.fn().mockResolvedValue(undefined),
     removeEntry: jest.fn().mockResolvedValue(undefined),
+    removeLocked: jest.fn().mockResolvedValue(undefined),
   }) as unknown as jest.Mocked<RedisQueueRepository>;
 
 const makeTokenRefresh = (): jest.Mocked<SpotifyTokenRefreshService> =>
@@ -113,6 +128,11 @@ const makeAdapter = (): jest.Mocked<SpotifyQueueAdapter> =>
     enqueueTrack: jest.fn().mockResolvedValue(undefined),
     getQueue: jest.fn().mockResolvedValue(null),
   }) as unknown as jest.Mocked<SpotifyQueueAdapter>;
+
+const makePlayback = (): jest.Mocked<SpotifyPlaybackAdapter> =>
+  ({
+    transferPlayback: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<SpotifyPlaybackAdapter>;
 
 const makeRealtime = (): jest.Mocked<RealtimeEventPublisher> =>
   ({
@@ -128,6 +148,7 @@ const makeService = (overrides: {
   lockGranted?: boolean;
 } = {}) => {
   const sessions = makeSessions(overrides.session ?? sessionRecord());
+  const users = makeUsers();
   const entries = makeEntries(
     overrides.candidate === undefined ? entryWithTrack() : overrides.candidate,
     overrides.buffered ?? 0,
@@ -135,20 +156,35 @@ const makeService = (overrides: {
   const redis = makeRedis(overrides.lockGranted ?? true);
   const tokenRefresh = makeTokenRefresh();
   const adapter = makeAdapter();
+  const playback = makePlayback();
   const breaker = new SpotifyCircuitBreaker();
   const realtime = makeRealtime();
   const state = new RunnerStateService(realtime);
   const service = new QueueDispatchService(
     sessions,
+    users,
     entries,
     redis,
     tokenRefresh,
     adapter,
+    playback,
     breaker,
     state,
     realtime,
   );
-  return { service, sessions, entries, redis, tokenRefresh, adapter, breaker, state, realtime };
+  return {
+    service,
+    sessions,
+    users,
+    entries,
+    redis,
+    tokenRefresh,
+    adapter,
+    playback,
+    breaker,
+    state,
+    realtime,
+  };
 };
 
 describe('QueueDispatchService.dispatchNextForSession', () => {
@@ -161,6 +197,7 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
     expect(adapter.enqueueTrack).toHaveBeenCalledWith('access-token', 'spotify:track:M12', 'dev-1');
     expect(entries.markQueuedToSpotify).toHaveBeenCalledWith(ENTRY_ID, expect.any(Date));
     expect(redis.removeEntry).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
+    expect(redis.removeLocked).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
     expect(realtime.publishTrackQueuedToSpotify).toHaveBeenCalledWith(
       SESSION_ID,
       expect.objectContaining({ entryId: ENTRY_ID, trackUri: 'spotify:track:M12' }),
@@ -187,12 +224,24 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
     expect(adapter.enqueueTrack).not.toHaveBeenCalled();
   });
 
-  it('does not dispatch a LOCKED entry — second read inside the lock catches the change', async () => {
+  it('dispatches a LOCKED entry before pending entries', async () => {
+    const locked = entryWithTrack({ id: 'locked-1', status: 'LOCKED' });
+    const { service, entries, adapter } = makeService();
+    (entries.listLockedForDispatchWithTrack as jest.Mock).mockResolvedValueOnce([locked]);
+    (entries.findByIdWithTrack as jest.Mock).mockResolvedValueOnce(locked);
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('dispatched');
+    expect(result.entryId).toBe('locked-1');
+    expect(adapter.enqueueTrack).toHaveBeenCalledWith('access-token', 'spotify:track:M12', 'dev-1');
+    expect(entries.listPendingByIdsWithTrack).not.toHaveBeenCalled();
+  });
+
+  it('skips a row that is no longer dispatchable after the second read', async () => {
     const candidate = entryWithTrack();
     const { service, entries, adapter } = makeService({ candidate });
-    // The Redis ZSET still says it's pending, but the row is now LOCKED.
+    // The Redis ZSET still says it's pending, but the row has moved beyond dispatch.
     (entries.findByIdWithTrack as jest.Mock).mockResolvedValueOnce(
-      entryWithTrack({ status: 'LOCKED' }),
+      entryWithTrack({ status: 'PLAYING' }),
     );
     const result = await service.dispatchNextForSession(SESSION_ID);
     expect(result.outcome).toBe('no_pending');
@@ -253,6 +302,57 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
     const result = await service.dispatchNextForSession(SESSION_ID);
     expect(result.outcome).toBe('no_device');
     expect(state.isEnabled(SESSION_ID)).toBe(false);
+  });
+
+  it('re-activates the selected device once when enqueue reports no active device', async () => {
+    const { service, adapter, playback } = makeService();
+    (adapter.enqueueTrack as jest.Mock)
+      .mockRejectedValueOnce(new DomainError('SPOTIFY_NO_ACTIVE_DEVICE', 'no device'))
+      .mockResolvedValueOnce(undefined);
+
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('dispatched');
+    expect(playback.transferPlayback).toHaveBeenCalledWith('access-token', 'dev-1', true);
+    expect(adapter.enqueueTrack).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the host current selected device instead of the session creation snapshot', async () => {
+    const { service, adapter, users } = makeService({
+      session: sessionRecord({ selectedSpotifyDeviceId: 'stale-dev' }),
+    });
+    (users.findById as jest.Mock).mockResolvedValueOnce({
+      id: HOST_ID,
+      email: null,
+      displayName: null,
+      spotifyUserId: 'spotify-host',
+      selectedDeviceId: 'fresh-dev',
+    });
+
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('dispatched');
+    expect(adapter.enqueueTrack).toHaveBeenCalledWith(
+      'access-token',
+      'spotify:track:M12',
+      'fresh-dev',
+    );
+  });
+
+  it('falls back to the active Spotify device when the stored selected device is stale', async () => {
+    const { service, adapter, playback } = makeService();
+    (adapter.enqueueTrack as jest.Mock)
+      .mockRejectedValueOnce(new DomainError('SPOTIFY_NO_ACTIVE_DEVICE', 'no device'))
+      .mockResolvedValueOnce(undefined);
+    (playback.transferPlayback as jest.Mock).mockRejectedValueOnce(
+      new DomainError('SPOTIFY_DEVICE_NOT_FOUND', 'stale device'),
+    );
+
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('dispatched');
+    expect(adapter.enqueueTrack).toHaveBeenLastCalledWith(
+      'access-token',
+      'spotify:track:M12',
+      null,
+    );
   });
 
   it('honors 429 Retry-After by setting backoff + opening the breaker', async () => {

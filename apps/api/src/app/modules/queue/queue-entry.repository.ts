@@ -416,6 +416,26 @@ export class QueueEntryRepository {
     });
   }
 
+  async listLockedForDispatchWithTrack(
+    sessionId: string,
+    limit: number,
+    now: Date,
+    tx: PrismaTxn = this.prisma,
+  ): Promise<QueueEntryWithTrack[]> {
+    if (limit <= 0) return [];
+    const rows = await tx.queueEntry.findMany({
+      where: {
+        sessionId,
+        status: 'LOCKED',
+        OR: [{ lockedUntil: null }, { lockedUntil: { gt: now } }],
+      },
+      orderBy: [{ score: 'desc' }, { createdAt: 'asc' }],
+      take: limit,
+      include: { track: true },
+    });
+    return rows.map(toRecordWithTrack);
+  }
+
   async applyVoteDelta(
     entryId: string,
     upvoteDelta: number,
