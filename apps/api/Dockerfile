@@ -9,7 +9,7 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/runner/package.json apps/runner/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY libs ./libs
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 FROM deps AS build
 COPY apps/api ./apps/api
