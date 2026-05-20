@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: fairplay-api
+    runtime: docker
+    repo: https://github.com/mymeles/fairplay.git
+    branch: main
+    plan: free
+    region: oregon
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    autoDeployTrigger: off
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: LOG_LEVEL
+        value: info
+      - key: RUNNER_ENABLED
+        value: "true"
+      - key: RUNNER_TICK_MS
+        value: "5000"
+      - key: NOW_PLAYING_ENABLED
+        value: "true"
+      - key: NOW_PLAYING_TICK_MS
+        value: "6000"
+      - key: WEB_AUTH_COMPLETE_URL
+        value: https://fairplay-party-dj.vercel.app/host/auth/complete
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: fairplay-redis
+          property: connectionString
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_REDIRECT_URI
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: HOST_JWT_SECRET
+        sync: false
+
+  - type: keyvalue
+    name: fairplay-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
