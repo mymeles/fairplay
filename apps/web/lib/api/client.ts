@@ -50,6 +50,14 @@ export const apiFetch = async <T>(req: ApiRequest): Promise<T> => {
   const auth: AuthRole = req.auth ?? 'public';
   const token = pickToken(auth, req.sessionId);
 
+  if (auth === 'host' && !token) {
+    throw new ApiError('AUTH_REQUIRED', 'Connect Spotify to continue.', 401);
+  }
+
+  if (auth === 'guest' && !token) {
+    throw new ApiError('GUEST_AUTH_REQUIRED', 'Join this session before continuing.', 401);
+  }
+
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (req.body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;

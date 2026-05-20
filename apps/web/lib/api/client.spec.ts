@@ -69,6 +69,17 @@ describe('apiFetch', () => {
     );
   });
 
+  it('rejects host requests before fetch when the host bearer is missing', async () => {
+    const calls = installFetch({ body: { data: { connected: true }, meta: { requestId: 'r' } } });
+
+    await expect(apiFetch({ path: '/sessions', method: 'POST', auth: 'host' })).rejects.toMatchObject({
+      code: 'AUTH_REQUIRED',
+      message: 'Connect Spotify to continue.',
+      status: 401,
+    });
+    expect(calls).toHaveLength(0);
+  });
+
   it('attaches the guest bearer keyed by sessionId', async () => {
     guestTokenStore.write('sess-A', 'guest-jwt-A', {
       guestId: 'g-A',
@@ -87,6 +98,19 @@ describe('apiFetch', () => {
     expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe(
       'Bearer guest-jwt-B',
     );
+  });
+
+  it('rejects guest requests before fetch when the guest bearer is missing', async () => {
+    const calls = installFetch({ body: { data: [], meta: { requestId: 'r' } } });
+
+    await expect(
+      apiFetch({ path: '/sessions/sess-B/queue', auth: 'guest', sessionId: 'sess-B' }),
+    ).rejects.toMatchObject({
+      code: 'GUEST_AUTH_REQUIRED',
+      message: 'Join this session before continuing.',
+      status: 401,
+    });
+    expect(calls).toHaveLength(0);
   });
 
   it('throws ApiError mapping code/message from the error envelope', async () => {

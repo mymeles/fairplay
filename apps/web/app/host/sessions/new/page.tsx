@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { CheckCircle2, Loader2, SlidersHorizontal } from 'lucide-react';
+import { CheckCircle2, Loader2, LogIn, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -74,6 +74,16 @@ export default function NewSessionPage() {
   const proximityRequired = watch('proximityRequired');
 
   const onSubmit = handleSubmit(async (values) => {
+    if (!token) {
+      toast({
+        title: 'Connect Spotify first',
+        description: 'Host sessions need your Spotify login before they can be created.',
+        tone: 'danger',
+      });
+      router.replace('/host/login');
+      return;
+    }
+
     try {
       const result = await createSession({
         name: values.name.trim() || undefined,
@@ -101,6 +111,16 @@ export default function NewSessionPage() {
       rememberHostSession(result.session);
       router.push(`/host/sessions/${result.session.id}/qr`);
     } catch (err) {
+      if (err instanceof Error && 'status' in err && err.status === 401) {
+        toast({
+          title: 'Connect Spotify first',
+          description: err.message,
+          tone: 'danger',
+        });
+        router.replace('/host/login');
+        return;
+      }
+
       toast({
         title: 'Could not create session',
         description: err instanceof Error ? err.message : 'Try again',
@@ -111,8 +131,29 @@ export default function NewSessionPage() {
 
   if (!ready || !token) {
     return (
-      <main className="flex min-h-screen items-center justify-center text-ink-muted">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Connect Spotify first</CardTitle>
+            <CardDescription>
+              Host sessions need your Spotify login before FairPlay can create a party.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Button asChild>
+              <Link href="/host/login">
+                <LogIn className="h-4 w-4" />
+                Connect Spotify
+              </Link>
+            </Button>
+            {!ready ? (
+              <div className="flex items-center gap-2 text-sm text-ink-muted">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking login…
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
       </main>
     );
   }
