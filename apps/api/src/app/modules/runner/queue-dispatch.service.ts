@@ -197,6 +197,32 @@ export class QueueDispatchService {
         this.runnerState.markIdle(sessionId);
         return { sessionId, outcome: 'no_pending' };
       }
+      const duplicate = await this.entries.findBufferedDuplicateForTrack(
+        sessionId,
+        fresh.trackId,
+        fresh.id,
+      );
+      if (duplicate) {
+        const removed = await this.entries.markRemoved(fresh.id);
+        await this.redisQueue.removeEntry(sessionId, fresh.id);
+        await this.redisQueue.removeLocked(sessionId, fresh.id);
+        this.realtime?.publishQueueUpdated(sessionId, {
+          reason: 'entry_removed',
+          entryId: fresh.id,
+          status: removed.status,
+        });
+        this.logger.warn(
+          {
+            sessionId,
+            entryId: fresh.id,
+            duplicateOfEntryId: duplicate.id,
+            trackId: fresh.trackId,
+          },
+          'Duplicate queue entry skipped before Spotify dispatch.',
+        );
+        return { sessionId, outcome: 'no_pending' };
+      }
+
       // 8. Refresh the host token, then pre-claim the row immediately before
       //    calling Spotify. Token/device lookup failures have no Spotify side
       //    effects, so they should not move queue state.

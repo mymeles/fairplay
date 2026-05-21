@@ -99,6 +99,15 @@ const makeEntries = (
       .fn()
       .mockResolvedValue(candidate ? [candidate] : []),
     findByIdWithTrack: finder,
+    findBufferedDuplicateForTrack: jest.fn().mockResolvedValue(null),
+    markRemoved: jest.fn().mockImplementation((entryId) =>
+      Promise.resolve({
+        ...(candidate ?? entryWithTrack()),
+        id: entryId,
+        status: 'REMOVED' as const,
+        removedAt: new Date(),
+      }),
+    ),
     claimQueuedToSpotify: jest.fn().mockImplementation((entryId, queuedAt) =>
       Promise.resolve({
         ...(candidate ?? entryWithTrack()),
@@ -313,6 +322,24 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
     const result = await service.dispatchNextForSession(SESSION_ID);
     expect(result.outcome).toBe('no_pending');
     expect(adapter.enqueueTrack).not.toHaveBeenCalled();
+  });
+
+  it('removes a stale duplicate when the same track is already buffered', async () => {
+    const { service, entries, redis, adapter, realtime } = makeService();
+    (entries.findBufferedDuplicateForTrack as jest.Mock).mockResolvedValueOnce(
+      entryWithTrack({ id: 'already-buffered', status: 'QUEUED_TO_SPOTIFY' }),
+    );
+
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('no_pending');
+    expect(adapter.enqueueTrack).not.toHaveBeenCalled();
+    expect(entries.markRemoved).toHaveBeenCalledWith(ENTRY_ID);
+    expect(redis.removeEntry).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
+    expect(redis.removeLocked).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
+    expect(realtime.publishQueueUpdated).toHaveBeenCalledWith(
+      SESSION_ID,
+      expect.objectContaining({ reason: 'entry_removed', entryId: ENTRY_ID, status: 'REMOVED' }),
+    );
   });
 
   it('skips when the dispatch lock is contended', async () => {

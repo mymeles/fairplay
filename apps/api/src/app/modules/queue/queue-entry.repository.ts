@@ -229,6 +229,23 @@ export class QueueEntryRepository {
     return row ? toRecord(row) : null;
   }
 
+  async findBufferedDuplicateForTrack(
+    sessionId: string,
+    trackId: string,
+    excludeEntryId: string,
+  ): Promise<QueueEntryRecord | null> {
+    const row = await this.prisma.queueEntry.findFirst({
+      where: {
+        sessionId,
+        trackId,
+        id: { not: excludeEntryId },
+        status: { in: ['QUEUED_TO_SPOTIFY', 'PLAYING'] },
+      },
+      orderBy: [{ spotifyQueuedAt: 'desc' }, { playingAt: 'desc' }, { createdAt: 'asc' }],
+    });
+    return row ? toRecord(row) : null;
+  }
+
   async markRemoved(entryId: string, removedAt: Date = new Date()): Promise<QueueEntryRecord> {
     const row = await this.prisma.queueEntry.update({
       where: { id: entryId },
