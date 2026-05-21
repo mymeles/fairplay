@@ -33,6 +33,10 @@ export class RedisQueueRepository {
     return `runner:dispatch:${sessionId}`;
   }
 
+  static addLockKey(sessionId: string, trackId: string): string {
+    return `queue:add:${sessionId}:${trackId}`;
+  }
+
   // SET key value NX EX seconds. Returns true if we acquired the lock; false
   // if another worker (or a stale tick on a slow Spotify call) already holds
   // it. The token argument is opaque — pass anything unique enough to log.
@@ -65,6 +69,31 @@ export class RedisQueueRepository {
       }
     } catch (err) {
       this.logger.warn({ err, sessionId }, 'Redis dispatch lock release failed.');
+    }
+  }
+
+  async acquireAddLock(sessionId: string, trackId: string, token: string): Promise<boolean> {
+    try {
+      const res = await this.redis
+        .getClient()
+        .set(RedisQueueRepository.addLockKey(sessionId, trackId), token, 'EX', 10, 'NX');
+      return res === 'OK';
+    } catch (err) {
+      this.logger.warn({ err, sessionId, trackId }, 'Redis SET NX failed for queue add lock.');
+      return false;
+    }
+  }
+
+  async releaseAddLock(sessionId: string, trackId: string, token: string): Promise<void> {
+    try {
+      const client = this.redis.getClient();
+      const key = RedisQueueRepository.addLockKey(sessionId, trackId);
+      const current = await client.get(key);
+      if (current === token) {
+        await client.del(key);
+      }
+    } catch (err) {
+      this.logger.warn({ err, sessionId, trackId }, 'Redis queue add lock release failed.');
     }
   }
 

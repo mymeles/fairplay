@@ -99,6 +99,15 @@ const makeEntries = (
       .fn()
       .mockResolvedValue(candidate ? [candidate] : []),
     findByIdWithTrack: finder,
+    claimQueuedToSpotify: jest.fn().mockImplementation((entryId, queuedAt) =>
+      Promise.resolve({
+        ...(candidate ?? entryWithTrack()),
+        id: entryId,
+        status: 'QUEUED_TO_SPOTIFY' as const,
+        spotifyQueuedAt: queuedAt,
+      }),
+    ),
+    restoreDispatchableStatus: jest.fn().mockResolvedValue(candidate ?? entryWithTrack()),
     markQueuedToSpotify: jest.fn().mockImplementation((entryId, queuedAt) =>
       Promise.resolve({
         ...(candidate ?? entryWithTrack()),
@@ -205,8 +214,9 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
 
     expect(result.outcome).toBe('dispatched');
     expect(result.entryId).toBe(ENTRY_ID);
+    expect(entries.claimQueuedToSpotify).toHaveBeenCalledWith(ENTRY_ID, expect.any(Date));
     expect(adapter.enqueueTrack).toHaveBeenCalledWith('access-token', 'spotify:track:M12', 'dev-1');
-    expect(entries.markQueuedToSpotify).toHaveBeenCalledWith(ENTRY_ID, expect.any(Date));
+    expect(entries.markQueuedToSpotify).not.toHaveBeenCalled();
     expect(redis.removeEntry).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
     expect(redis.removeLocked).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID);
     expect(realtime.publishTrackQueuedToSpotify).toHaveBeenCalledWith(
@@ -296,6 +306,15 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
     expect(adapter.enqueueTrack).not.toHaveBeenCalled();
   });
 
+  it('skips when another worker claimed the entry first', async () => {
+    const { service, entries, adapter } = makeService();
+    (entries.claimQueuedToSpotify as jest.Mock).mockResolvedValueOnce(null);
+
+    const result = await service.dispatchNextForSession(SESSION_ID);
+    expect(result.outcome).toBe('no_pending');
+    expect(adapter.enqueueTrack).not.toHaveBeenCalled();
+  });
+
   it('skips when the dispatch lock is contended', async () => {
     const { service, adapter } = makeService({ lockGranted: false });
     const result = await service.dispatchNextForSession(SESSION_ID);
@@ -322,12 +341,13 @@ describe('QueueDispatchService.dispatchNextForSession', () => {
   });
 
   it('disables the runner on persistent 401', async () => {
-    const { service, adapter, state } = makeService();
+    const { service, adapter, entries, state } = makeService();
     (adapter.enqueueTrack as jest.Mock).mockRejectedValue(
       new DomainError('SPOTIFY_AUTH_FAILED', 'invalid'),
     );
     const result = await service.dispatchNextForSession(SESSION_ID);
     expect(result.outcome).toBe('auth_failed');
+    expect(entries.restoreDispatchableStatus).toHaveBeenCalledWith(ENTRY_ID, 'PENDING');
     expect(state.isEnabled(SESSION_ID)).toBe(false);
   });
 

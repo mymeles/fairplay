@@ -147,6 +147,8 @@ export class QueueDispatchService {
       if (!candidate && fallbackCandidate) {
         const accessToken = await this.tokenRefresh.getValidAccessToken(hostUserId);
         const deviceId = await this.selectedDeviceIdFor(hostUserId, session.selectedSpotifyDeviceId);
+        const queuedAt = new Date();
+        await this.fallbackPlaylist.markQueued(fallbackCandidate.id, queuedAt);
         try {
           await this.enqueueWithDeviceRecovery(
             accessToken,
@@ -170,8 +172,6 @@ export class QueueDispatchService {
           }
         }
 
-        const queuedAt = new Date();
-        await this.fallbackPlaylist.markQueued(fallbackCandidate.id, queuedAt);
         this.breaker.recordSuccess(hostUserId);
         this.runnerState.markFallbackActive(sessionId);
         this.logger.log(
@@ -197,10 +197,19 @@ export class QueueDispatchService {
         this.runnerState.markIdle(sessionId);
         return { sessionId, outcome: 'no_pending' };
       }
-
-      // 8. Refresh the host token (with one-shot 401 retry) and call Spotify.
+      // 8. Refresh the host token, then pre-claim the row immediately before
+      //    calling Spotify. Token/device lookup failures have no Spotify side
+      //    effects, so they should not move queue state.
       const accessToken = await this.tokenRefresh.getValidAccessToken(hostUserId);
       const deviceId = await this.selectedDeviceIdFor(hostUserId, session.selectedSpotifyDeviceId);
+      const previousStatus = fresh.status as 'PENDING' | 'LOCKED';
+      const queuedAt = new Date();
+      const claimed = await this.entries.claimQueuedToSpotify(fresh.id, queuedAt);
+      if (!claimed) {
+        this.runnerState.markIdle(sessionId);
+        return { sessionId, outcome: 'no_pending' };
+      }
+
       try {
         await this.enqueueWithDeviceRecovery(accessToken, fresh.track.spotifyUri, deviceId);
       } catch (err) {
@@ -210,39 +219,40 @@ export class QueueDispatchService {
             const fresher = await this.tokenRefresh.forceRefresh(hostUserId);
             await this.enqueueWithDeviceRecovery(fresher, fresh.track.spotifyUri, deviceId);
           } catch (retryErr) {
+            await this.entries.restoreDispatchableStatus(fresh.id, previousStatus);
             return this.handleSpotifyError(sessionId, hostUserId, fresh, retryErr, now);
           }
         } else {
+          await this.entries.restoreDispatchableStatus(fresh.id, previousStatus);
           return this.handleSpotifyError(sessionId, hostUserId, fresh, err, now);
         }
       }
 
-      // 9. Spotify accepted the track — mark the entry, drop from pending
-      //    ZSET, publish realtime updates.
-      const queuedAt = new Date();
-      const updated = await this.entries.markQueuedToSpotify(fresh.id, queuedAt);
-      await this.redisQueue.removeEntry(sessionId, updated.id);
-      await this.redisQueue.removeLocked(sessionId, updated.id);
+      // 9. Spotify accepted the track — drop from pending ZSET and publish
+      //    realtime updates. The DB row was pre-claimed before the external
+      //    call so retrying ticks cannot enqueue the same entry twice.
+      await this.redisQueue.removeEntry(sessionId, claimed.id);
+      await this.redisQueue.removeLocked(sessionId, claimed.id);
       this.breaker.recordSuccess(hostUserId);
-      this.runnerState.markActive(sessionId, updated.id);
+      this.runnerState.markActive(sessionId, claimed.id);
 
       const payload: TrackQueuedToSpotifyPayload = {
-        entryId: updated.id,
+        entryId: claimed.id,
         trackUri: fresh.track.spotifyUri,
         spotifyQueuedAt: queuedAt.toISOString(),
       };
       this.realtime?.publishTrackQueuedToSpotify(sessionId, payload);
       this.realtime?.publishQueueUpdated(sessionId, {
         reason: 'entry_queued_to_spotify',
-        entryId: updated.id,
-        status: updated.status,
+        entryId: claimed.id,
+        status: claimed.status,
       });
 
       this.logger.log(
         {
           sessionId,
           hostUserId,
-          entryId: updated.id,
+          entryId: claimed.id,
           trackUri: fresh.track.spotifyUri,
           deviceId,
         },
@@ -252,7 +262,7 @@ export class QueueDispatchService {
       return {
         sessionId,
         outcome: 'dispatched',
-        entryId: updated.id,
+        entryId: claimed.id,
         trackUri: fresh.track.spotifyUri,
       };
     } catch (err) {

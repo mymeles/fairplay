@@ -122,6 +122,8 @@ const makeEntries = (): jest.Mocked<QueueEntryRepository> =>
 
 const makeRedisQueue = (): jest.Mocked<RedisQueueRepository> =>
   ({
+    acquireAddLock: jest.fn().mockResolvedValue(true),
+    releaseAddLock: jest.fn().mockResolvedValue(undefined),
     addPending: jest.fn().mockResolvedValue(undefined),
     removeEntry: jest.fn().mockResolvedValue(undefined),
     listPendingIds: jest.fn().mockResolvedValue([]),
@@ -203,6 +205,11 @@ describe('QueueService.addTrack', () => {
       score: 0,
     });
     expect(redisQueue.addPending).toHaveBeenCalledWith(SESSION_ID, ENTRY_ID, 0);
+    expect(redisQueue.releaseAddLock).toHaveBeenCalledWith(
+      SESSION_ID,
+      TRACK_ROW_ID,
+      expect.any(String),
+    );
     expect(realtime.publishQueueUpdated).toHaveBeenCalledWith(SESSION_ID, {
       reason: 'entry_added',
       entryId: ENTRY_ID,
@@ -212,6 +219,19 @@ describe('QueueService.addTrack', () => {
     expect(result.score).toBe(0);
     expect(result.status).toBe('PENDING');
     expect(result.track.spotifyUri).toBe('spotify:track:abc123');
+  });
+
+  it('rejects a concurrent add for the same track before creating an entry', async () => {
+    const { service, entries, redisQueue } = makeService();
+    (redisQueue.acquireAddLock as jest.Mock).mockResolvedValueOnce(false);
+
+    await expect(service.addTrack(SESSION_ID, GUEST_ID, spotifyTrack())).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'This track is already being added. Try another song.',
+    });
+    expect(entries.findRecentForTrack).not.toHaveBeenCalled();
+    expect(entries.create).not.toHaveBeenCalled();
+    expect(redisQueue.addPending).not.toHaveBeenCalled();
   });
 
   it('rejects an unnormalizable Spotify track before touching the DB', async () => {

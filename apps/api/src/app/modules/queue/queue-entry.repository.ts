@@ -407,6 +407,34 @@ export class QueueEntryRepository {
     return toRecord(row);
   }
 
+  async claimQueuedToSpotify(
+    entryId: string,
+    spotifyQueuedAt: Date = new Date(),
+    tx: PrismaTxn = this.prisma,
+  ): Promise<QueueEntryRecord | null> {
+    const result = await tx.queueEntry.updateMany({
+      where: { id: entryId, status: { in: ['PENDING', 'LOCKED'] } },
+      data: { status: 'QUEUED_TO_SPOTIFY', spotifyQueuedAt },
+    });
+    if (result.count === 0) return null;
+    const row = await tx.queueEntry.findUnique({ where: { id: entryId } });
+    return row ? toRecord(row) : null;
+  }
+
+  async restoreDispatchableStatus(
+    entryId: string,
+    status: Extract<QueueEntryStatus, 'PENDING' | 'LOCKED'>,
+    tx: PrismaTxn = this.prisma,
+  ): Promise<QueueEntryRecord | null> {
+    const result = await tx.queueEntry.updateMany({
+      where: { id: entryId, status: 'QUEUED_TO_SPOTIFY' },
+      data: { status, spotifyQueuedAt: null },
+    });
+    if (result.count === 0) return null;
+    const row = await tx.queueEntry.findUnique({ where: { id: entryId } });
+    return row ? toRecord(row) : null;
+  }
+
   async listPendingByIdsWithTrack(
     sessionId: string,
     entryIds: string[],

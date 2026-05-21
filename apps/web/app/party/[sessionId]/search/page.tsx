@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Search } from 'lucide-react';
 import type { TrackDto } from '@fairplay/shared-types';
@@ -25,6 +25,8 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
   const { sessionId } = params;
   const qc = useQueryClient();
   const [q, setQ] = useState('');
+  const pendingAddsRef = useRef(new Set<string>());
+  const [pendingAdds, setPendingAdds] = useState<Set<string>>(() => new Set());
   const debounced = useDebounced(q, 800);
   const normalizedQuery = debounced.trim();
 
@@ -44,6 +46,18 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
     onError: (err: Error) =>
       toast({ title: 'Could not add', description: err.message, tone: 'danger' }),
   });
+
+  const addTrack = (track: TrackDto) => {
+    if (pendingAddsRef.current.has(track.spotifyTrackId)) return;
+    pendingAddsRef.current.add(track.spotifyTrackId);
+    setPendingAdds(new Set(pendingAddsRef.current));
+    add.mutate(track, {
+      onSettled: () => {
+        pendingAddsRef.current.delete(track.spotifyTrackId);
+        setPendingAdds(new Set(pendingAddsRef.current));
+      },
+    });
+  };
 
   const results = useMemo(() => search.data ?? [], [search.data]);
 
@@ -86,8 +100,8 @@ export default function PartySearchPage({ params }: { params: { sessionId: strin
             <TrackResultCard
               key={track.spotifyTrackId}
               track={track}
-              busy={add.isPending && add.variables?.spotifyTrackId === track.spotifyTrackId}
-              onAdd={() => add.mutate(track)}
+              busy={pendingAdds.has(track.spotifyTrackId)}
+              onAdd={() => addTrack(track)}
             />
           ))}
         </ul>

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { QueueEntryDto, TrackDto } from '@fairplay/shared-types';
 import { DomainError } from '@fairplay/shared-utils';
@@ -50,72 +51,83 @@ export class QueueService {
     });
 
     const track = await this.tracks.upsert(normalized);
-
-    await this.enforceMaxSuggestions(sessionId, guestId, session.settings.maxSuggestionsPerGuest);
-    await this.enforceDuplicateCooldown(
-      sessionId,
-      track.id,
-      session.settings.duplicateCooldownSeconds,
-    );
-
-    // Fresh entry: zero counters, no boosts, no host-pin, age = 0. The
-    // formula returns 0 today; once boosts (M15) or host-pins (M14) are
-    // applied between create and ZADD, this score path will still be right.
-    const now = new Date();
-    const score = this.scoring.calculate(
-      {
-        upvotes: 0,
-        downvotes: 0,
-        boostCredits: 0,
-        hostPinned: false,
-        createdAt: now,
-      },
-      session.settings,
-      now,
-    );
-    const entry = await this.entries.create({
-      sessionId,
-      trackId: track.id,
-      addedByGuestId: guestId,
-      score,
-    });
-
-    await this.redisQueue.addPending(sessionId, entry.id, score);
-    this.realtime?.publishQueueUpdated(sessionId, {
-      reason: 'entry_added',
-      entryId: entry.id,
-      status: entry.status,
-    });
-
-    this.logger.log(
-      {
-        sessionId,
-        guestId,
-        entryId: entry.id,
+    const addLockToken = randomUUID();
+    const gotAddLock = await this.redisQueue.acquireAddLock(sessionId, track.id, addLockToken);
+    if (!gotAddLock) {
+      throw new DomainError('CONFLICT', 'This track is already being added. Try another song.', {
         trackId: track.id,
-        spotifyTrackId: track.spotifyTrackId,
-        score,
-      },
-      'Queue entry created.',
-    );
+      });
+    }
 
-    const guest = await this.guests.findById(guestId);
-    return this.toDto(
-      entry,
-      {
-        id: track.id,
-        spotifyUri: track.spotifyUri,
-        spotifyTrackId: track.spotifyTrackId,
-        title: track.title,
-        artist: track.artist,
-        ...(track.album ? { album: track.album } : {}),
-        durationMs: track.durationMs,
-        ...(track.artworkUrl ? { artworkUrl: track.artworkUrl } : {}),
-        explicit: track.explicit,
-        createdAt: track.createdAt,
-      },
-      guest?.displayName ?? null,
-    );
+    try {
+      await this.enforceMaxSuggestions(sessionId, guestId, session.settings.maxSuggestionsPerGuest);
+      await this.enforceDuplicateCooldown(
+        sessionId,
+        track.id,
+        session.settings.duplicateCooldownSeconds,
+      );
+
+      // Fresh entry: zero counters, no boosts, no host-pin, age = 0. The
+      // formula returns 0 today; once boosts (M15) or host-pins (M14) are
+      // applied between create and ZADD, this score path will still be right.
+      const now = new Date();
+      const score = this.scoring.calculate(
+        {
+          upvotes: 0,
+          downvotes: 0,
+          boostCredits: 0,
+          hostPinned: false,
+          createdAt: now,
+        },
+        session.settings,
+        now,
+      );
+      const entry = await this.entries.create({
+        sessionId,
+        trackId: track.id,
+        addedByGuestId: guestId,
+        score,
+      });
+
+      await this.redisQueue.addPending(sessionId, entry.id, score);
+      this.realtime?.publishQueueUpdated(sessionId, {
+        reason: 'entry_added',
+        entryId: entry.id,
+        status: entry.status,
+      });
+
+      this.logger.log(
+        {
+          sessionId,
+          guestId,
+          entryId: entry.id,
+          trackId: track.id,
+          spotifyTrackId: track.spotifyTrackId,
+          score,
+        },
+        'Queue entry created.',
+      );
+
+      const guest = await this.guests.findById(guestId);
+      return this.toDto(
+        entry,
+        {
+          id: track.id,
+          spotifyUri: track.spotifyUri,
+          spotifyTrackId: track.spotifyTrackId,
+          title: track.title,
+          artist: track.artist,
+          ...(track.album ? { album: track.album } : {}),
+          durationMs: track.durationMs,
+          ...(track.artworkUrl ? { artworkUrl: track.artworkUrl } : {}),
+          explicit: track.explicit,
+          createdAt: track.createdAt,
+        },
+        guest?.displayName ?? null,
+      );
+    } finally {
+      await this.redisQueue.releaseAddLock(sessionId, track.id, addLockToken);
+    }
   }
 
   async listSession(sessionId: string, guestId: string): Promise<QueueEntryDto[]> {
